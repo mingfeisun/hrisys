@@ -1,0 +1,52 @@
+<?xml version="1.0" ?>
+<bvhactor name="actor">
+  <skin>
+    <filename>moonwalk.dae</filename>
+    <scale>1.0</scale>
+  </skin>
+  <pose>0 0 0 0 0 0</pose>
+
+  <bvh_map name="map01">
+    <pair dae="Hips" bvh="Hips"/>
+    <pair dae="LHipJoint" bvh="LHipJoint"/>
+    <pair dae="LeftUpLeg" bvh="LeftUpLeg"/>
+    <pair dae="LeftLeg" bvh="LeftLeg"/>
+    <pair dae="LeftFoot" bvh="LeftFoot"/>
+    <pair dae="LeftToeBase" bvh="LeftToeBase"/>
+    <pair dae="RHipJoint" bvh="RHipJoint"/>
+    <pair dae="RightUpLeg" bvh="RightUpLeg"/>
+    <pair dae="RightLeg" bvh="RightLeg"/>
+    <pair dae="RightFoot" bvh="RightFoot"/>
+    <pair dae="RightToeBase" bvh="RightToeBase"/>
+    <pair dae="LowerBack" bvh="LowerBack"/>
+    <pair dae="Spine" bvh="Spine"/>
+    <pair dae="Spine1" bvh="Spine1"/>
+    <pair dae="Neck" bvh="Neck"/>
+    <pair dae="Neck1" bvh="Neck1"/>
+    <pair dae="Head" bvh="Head"/>
+    <pair dae="LeftShoulder" bvh="LeftShoulder"/>
+    <pair dae="LeftArm" bvh="LeftArm"/>
+    <pair dae="LeftForeArm" bvh="LeftForeArm"/>
+    <pair dae="LeftHand" bvh="LeftHand"/>
+    <pair dae="LeftFingerBase" bvh="LeftFingerBase"/>
+    <pair dae="LeftHandIndex1" bvh="LeftHandIndex1"/>
+    <pair dae="LThumb" bvh="LThumb"/>
+    <pair dae="RightShoulder" bvh="RightShoulder"/>
+    <pair dae="RightArm" bvh="RightArm"/>
+    <pair dae="RightForeArm" bvh="RightForeArm"/>
+    <pair dae="RightHand" bvh="RightHand"/>
+    <pair dae="RightFingerBase" bvh="RightFingerBase"/>
+    <pair dae="RightHandIndex1" bvh="RightHandIndex1"/>
+    <pair dae="RThumb" bvh="RThumb"/>
+  </bvh_map>
+
+  <bvh_animation name="01_01">
+    <filename>/home/ssb/Downloads/01/01_01.bvh</filename>
+    <interpolate_x>false</interpolate_x>
+    <map>map01</map>
+    <debug>false</debug>
+    <!--scale>0.10000</scale-->
+  </bvh_animation>
+
+  <auto_start>01_01</auto_start>
+</bvhactor>
