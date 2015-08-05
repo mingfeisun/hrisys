@@ -102,7 +102,7 @@
       <description></description>
     </element>
 
-    <element name="auto_start" type="bool" default="true" required="0">
+    <element name="auto_start" type="bool" default="false" required="1">
       <description></description>
     </element>
 
