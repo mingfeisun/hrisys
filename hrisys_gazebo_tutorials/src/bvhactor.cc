@@ -38,7 +38,9 @@ namespace gazebo
       if (!_sdf->HasElement("script"))
 	{
 	  _sdf->AddElement("script");
-	  _sdf->GetElement("script")->GetElement("auto_start")->Set(false);
+	  /// auto_start set to false from instance file
+	  /// the following seems to not work with some versions of sdf
+	  // _sdf->GetElement("script")->GetElement("auto_start")->Set(false);
 	}
 
       Actor::Load(_sdf);
