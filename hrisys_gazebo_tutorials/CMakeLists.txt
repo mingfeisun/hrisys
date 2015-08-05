@@ -10,8 +10,8 @@ link_directories(${Boost_LIBRARY_DIRS})
 
 include (FindPkgConfig)
 if (PKG_CONFIG_FOUND)
-  pkg_check_modules(GAZEBO gazebo<6.0)
-  pkg_check_modules(SDF sdformat<3.0)
+  pkg_check_modules(GAZEBO gazebo)
+  pkg_check_modules(SDF sdformat)
 endif()
 
 message(STATUS "found gazebo version:  " ${GAZEBO_VERSION})
