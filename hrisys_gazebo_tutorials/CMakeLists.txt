@@ -1,3 +1,4 @@
+# hrisys for gazebo5, ROS J, Ubuntu T
 cmake_minimum_required(VERSION 2.8.3)
 project(hrisys_gazebo_tutorials)
 
@@ -9,8 +10,27 @@ link_directories(${Boost_LIBRARY_DIRS})
 
 include (FindPkgConfig)
 if (PKG_CONFIG_FOUND)
-  pkg_check_modules(GAZEBO gazebo)
+  pkg_check_modules(GAZEBO gazebo<6.0)
+  pkg_check_modules(SDF sdformat<3.0)
 endif()
+
+message(STATUS "found gazebo version:  " ${GAZEBO_VERSION})
+message(STATUS "found sdformat version:  " ${SDF_VERSION})
+
+# compile fails with lower or higher version of gazebo
+if (${GAZEBO_VERSION} LESS 5.0)
+  message(FATAL_ERROR "gazebo version too old, expected 5")
+elseif (${GAZEBO_VERSION} GREATER 5.9)
+  message(FATAL_ERROR "gazebo version too new, expected 5")
+endif()
+
+# compile also fails with SDF1, 3, or higher
+if (${SDF_VERSION} LESS 2.0)
+  message(FATAL_ERROR "sdf version too old, expected 2")
+elseif (${SDF_VERSION} GREATER 2.9)
+  message(FATAL_ERROR "sdf version too new, expected 2")
+endif()
+
 include_directories(${GAZEBO_INCLUDE_DIRS})
 link_directories(${GAZEBO_LIBRARY_DIRS})
 
