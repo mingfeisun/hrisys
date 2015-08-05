@@ -33,7 +33,7 @@ namespace gazebo
       TiXmlDocument xmlDoc;
       if (instanceFile.empty())
 	{
-	  std::cerr << "chara file does not exist" << "\n";
+	  std::cerr << "instance file does not exist" << "\n";
 	  return;
 	}
       xmlDoc.LoadFile(instanceFile);
@@ -43,7 +43,7 @@ namespace gazebo
       /// however this is unusual since the file is not an actual sdf
       if (!sdf::readXml(elemXml, modelSdf->root))
 	{
-	  std::cerr << "bad chara xml" << "\n";
+	  std::cerr << "bad instance xml" << "\n";
 	  return;
 	}
 

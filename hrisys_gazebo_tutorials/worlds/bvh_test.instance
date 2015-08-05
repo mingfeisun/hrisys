@@ -41,7 +41,7 @@
   </bvh_map>
 
   <bvh_animation name="01_01">
-    <filename>/home/ssb/Downloads/01/01_01.bvh</filename>
+    <filename><!--write here--></filename>
     <interpolate_x>false</interpolate_x>
     <map>map01</map>
     <debug>false</debug>
