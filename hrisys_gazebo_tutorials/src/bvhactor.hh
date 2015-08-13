@@ -1,5 +1,5 @@
-#ifndef _HRI_PLUGIN_
-#define _HRI_PLUGIN_
+#ifndef _HRI_BVHACTOR_H_
+#define _HRI_BVHACTOR_H_
 
 #include "gazebo/physics/Actor.hh"
 
