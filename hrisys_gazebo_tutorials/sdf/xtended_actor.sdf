@@ -1,0 +1,150 @@
+<!-- XtendedActor -->
+<element name="xactor" required="*">
+  <description>Extended actor class which allows different motion per limb.</description>
+
+  <attribute name="name" type="string" default="__default__" required="1">
+    <description>Name of the model.</description>
+  </attribute>
+
+  <element name="static" type="bool" default="true" required="0">
+    <description>Actor should be static, in terms of physics simulation.</description>
+  </element>
+
+  <element name="pose" type="pose" default="0 0 0 0 0 0" required="0">
+    <description>DAE orientation for matching gazebo coordinates.</description>
+  </element>
+
+  <element name="skin" required="1">
+    <description>Description of the model's mesh.</description>
+
+    <element name="filename" type="string" default="__default__" required="1">
+      <description>The mesh file to load.</description>
+    </element>
+
+    <element name="scale" type="double" default="1.0" required="0"> 
+      <description>The scale to load the mesh.</description>
+    </element>
+  </element> <!-- End Skin -->
+
+  <element name="auto_start" type="string" default="__no_auto_start__" required="0">
+    <description>The default BVH animation to play when the model is loaded.</description>
+  </element>
+
+  <element name="bvh_map" required="*">
+    <description>Bone name map of BVH and DAE.</description>
+
+    <attribute name="name" type="string" default="__default__" required="1">
+      <description>Name of the map.</description>
+    </attribute>
+
+    <element name="pair" required="+">
+      <description>Corresponding bone name pair.</description>
+
+      <attribute name="dae" type="string" default="__default__" required="1">
+        <description>Bone name in DAE file.</description>
+      </attribute>
+      <attribute name="bvh" type="string" default="__default__" required="1">
+        <description>Bone name in BVH file.</description>
+      </attribute>
+    </element>
+  </element> <!-- End BvhMap -->
+
+  <element name="animation" required="*">
+    <description>DAE animations. Must have same structure as the loaded model.</description>
+
+    <attribute name="name" type="string" default="__default__" required="1">
+      <description>Name of the DAE animation.</description>
+    </attribute>
+
+    <element name="filename" type="string" default="__default__" required="1">
+      <description>DAE file to load.</description>
+    </element>
+    <element name="scale" type="double" default="1.0" required="0">
+      <description>The scale to load the animation. Should match model scale.</description>
+    </element>
+    <element name="interpolate_x" type="bool" default="false" required="0">
+      <description>Could be used for manual trajectories.</description>
+    </element>
+  </element> <!-- End Animation -->
+
+  <element name="bvh_animation" required="*">
+    <description>BVH animations. Map must be defined for different structures.</description>
+
+    <attribute name="name" type="string" default="__default__" required="1">
+      <description>Name of the BVH animation.</description>
+    </attribute>
+
+    <element name="filename" type="string" default="__default__" required="1">
+      <description>BVH file to load.</description>
+    </element>
+    <element name="scale" type="double" default="0.0" required="0">
+      <description>The scale of root translation. 0.0 for automatic scales.</description>
+    </element>
+    <element name="interpolate_x" type="bool" default="false" required="0">
+      <description>Could be used for manual trajectories.</description>
+    </element>
+    <element name="map" type="string" default="__default__" required="0">
+      <description>The map to use for matching bone structures.</description>
+    </element>
+    <element name="debug" type="bool" default="false" required="0">
+      <description>True will print all calculated matrix.</description>
+    </element>
+  </element> <!-- End BvhAnimation -->
+
+  <element name="script" required="0">
+    <description>Manual script for animations.</description>
+
+    <element name="loop" type="bool" default="true" required="0">
+      <description></description>
+    </element>
+
+    <element name="delay_start" type="double" default="0.0" required="0">
+      <description></description>
+    </element>
+
+    <element name="auto_start" type="bool" default="false" required="1">
+      <description></description>
+    </element>
+
+    <element name="trajectory" required="+">
+      <description></description>
+      <attribute name="id" type="int" default="0" required="1">
+        <description></description>
+      </attribute>
+
+      <attribute name="type" type="string" default="__default__" required="1">
+        <description></description>
+      </attribute>
+
+      <element name="waypoint" required="*">
+        <description></description>
+        <element name="time" type="double" default="0.0" required="1">
+          <description></description>
+        </element>
+        <element name="pose" type="pose" default="0 0 0 0 0 0" required="1">
+          <description></description>
+        </element>
+      </element> <!-- End Waypoint -->
+    </element> <!-- End Action -->
+  </element> <!-- End Script -->
+
+  <element name="limb" required="*">
+    <description>Group of nodes applied the same animation.</description>
+
+    <attribute name="name" type="string" default="__default__" required="1">
+      <description>Name of limb.</description>
+    </attribute>
+
+    <element name="node" required="+">
+      <description>Node to include in limb group.</description>
+      <attribute name="name" type="string" default="__default__" required="1">
+        <description>Name of node.</description>
+      </attribute>
+    </element>
+  </element> <!-- End Limb -->
+  
+  <include filename="link.sdf" required="+"/>
+  <include filename="joint.sdf" required="*"/>
+  <include filename="plugin.sdf" required="*"/>
+
+</element> <!-- End XtendedActor -->
