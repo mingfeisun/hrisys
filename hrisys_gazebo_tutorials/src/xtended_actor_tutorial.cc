@@ -3,6 +3,8 @@
 
 #include "gazebo/physics/World.hh"
 #include "bvhactor.hh"
+#include "LimbXtentions.hh"
+#include "xtends/XBvhLimb.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo

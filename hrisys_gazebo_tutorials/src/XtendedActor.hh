@@ -3,6 +3,7 @@
 
 #include "gazebo/physics/Actor.hh"
 #include "bvhactor.hh"
+#include "LimbXtentions.hh"
 
 namespace gazebo
 {
@@ -12,34 +13,6 @@ namespace gazebo
     typedef boost::shared_ptr<XtendedActor> XtendedActorPtr;
     class LimbXtentions;
     typedef boost::shared_ptr<LimbXtentions> LimbXtentionsPtr;
-
-    class LimbXtentions
-    {
-      /// \brief Constructor.
-    public: explicit LimbXtentions(WorldPtr _world);
-
-      /// \brief Destructor.
-    public: virtual ~LimbXtentions();
-
-    public: virtual void InitLimbX(sdf::ElementPtr _sdf) {};
-
-      /// \brief StartLimbX function.
-      /// Initializes UpdateLimbX and sets motion function for limb.
-      /// \param[in] _actor Pointer to Xtended Actor for setting limb motion.
-      /// \param[in] _limbname Name of limb to set.
-      /// \param[in] _arg Argument to set for fLimbNull function.
-    public: virtual void StartLimbX(XtendedActorPtr _actor, std::string _limb, ...) {};
-
-      /// \brief UpdateLimbX function.
-    public: virtual void UpdateLimbX(XtendedActorPtr _actor, std::string _limb) {};
-
-    public: virtual void FinishLimbX(XtendedActorPtr _actor, std::string _limb) {};
-
-    protected: WorldPtr world;
-
-    protected: LimbXtentionsPtr next;
-    };
-
 
     class XNullLimb : public LimbXtentions
     {
@@ -63,52 +36,7 @@ namespace gazebo
     };
 
 
-    class XBvhLimb : public LimbXtentions
-    {
-      /// \brief Constructor.
-    public: explicit XBvhLimb(WorldPtr _world);
-
-      /// \brief Destructor.
-    public: virtual ~XBvhLimb();
-
-    public: void InitLimbX(sdf::ElementPtr _sdf);
-
-      /// \brief StartLimbX function.
-    public: void StartLimbX(XtendedActorPtr _actor, std::string _limb, ...);
-
-      /// \brief UpdateLimbX function. Apply BVH motion to nodes in limb.
-      /// \param[in] _actor Pointer to Xtended Actor for setting node poses.
-      /// \param[in] _limbname Name of limb to set.
-    public: void UpdateLimbX(XtendedActorPtr _actor, std::string _limb);
-
-    public: void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
-
-      // protected: std::map<std::string, std::string> bvhFileName;
-
-    protected: std::map<std::string, common::SkeletonAnimation*> skelAnim;
-
-      /// \brief True if the animation should loop.
-    protected: std::map<std::string, bool> loop;
-
-      /// \brief Time of the previous frame.
-    protected: std::map<std::string, common::Time> prevFrameTime;
-
-      /// \brief Time when the animation was started.
-    protected: std::map<std::string, common::Time> playStartTime;
-
-      /// \brief Amount of time to delay start by.
-    protected: std::map<std::string, double> startDelay;
-
-      /// \brief Time length of a scipt.
-    protected: std::map<std::string, double> scriptLength;
-
-      /// \brief Time the scipt was last updated.
-    protected: std::map<std::string, double> lastScriptTime;
-    };
-
-
     typedef boost::shared_ptr<XNullLimb> XNullLimbPtr;
-    typedef boost::shared_ptr<XBvhLimb> XBvhLimbPtr;
 
 
     class XtendedActor : public BVHactor
