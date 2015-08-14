@@ -2,6 +2,7 @@
 #include <gazebo/gazebo.hh>
 
 #include "gazebo/physics/World.hh"
+#include "bvhactor.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo
@@ -74,7 +75,7 @@ namespace gazebo
       		  ->StartLimbX(this->model,
       			       startSdf->Get<std::string>("limb").c_str(),
       			       startSdf->Get<std::string>("file").c_str(),
-      			       startSdf->Get<std::string>("loop").c_str());
+      			       startSdf->Get<bool>("loop"));
       	      startSdf = startSdf->GetNextElement("start");
       	    }
       	}

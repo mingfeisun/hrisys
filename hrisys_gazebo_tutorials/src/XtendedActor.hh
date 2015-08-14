@@ -21,19 +21,19 @@ namespace gazebo
       /// \brief Destructor.
     public: virtual ~LimbXtentions();
 
-    public: virtual void InitLimbX(sdf::ElementPtr _sdf);
+    public: virtual void InitLimbX(sdf::ElementPtr _sdf) {};
 
       /// \brief StartLimbX function.
       /// Initializes UpdateLimbX and sets motion function for limb.
       /// \param[in] _actor Pointer to Xtended Actor for setting limb motion.
       /// \param[in] _limbname Name of limb to set.
       /// \param[in] _arg Argument to set for fLimbNull function.
-    public: virtual void StartLimbX(XtendedActorPtr _actor, std::string _limb, ...);
+    public: virtual void StartLimbX(XtendedActorPtr _actor, std::string _limb, ...) {};
 
       /// \brief UpdateLimbX function.
-    public: virtual void UpdateLimbX(XtendedActorPtr _actor, std::string _limb);
+    public: virtual void UpdateLimbX(XtendedActorPtr _actor, std::string _limb) {};
 
-    public: virtual void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
+    public: virtual void FinishLimbX(XtendedActorPtr _actor, std::string _limb) {};
 
     protected: WorldPtr world;
 
@@ -83,7 +83,7 @@ namespace gazebo
 
     public: void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
 
-    // protected: std::map<std::string, std::string> bvhFileName;
+      // protected: std::map<std::string, std::string> bvhFileName;
 
     protected: std::map<std::string, common::SkeletonAnimation*> skelAnim;
 
@@ -133,19 +133,6 @@ namespace gazebo
 
     public: math::Matrix4 GetNodePoseAtNow(std::string _node) const;
 
-    //   /// \brief Get argument for UpdateLimbX function.
-    //   /// Used in UpdateLimbX functions. Public for UpdateLimbX extention.
-    //   /// \param[in] _limb Name of limb.
-    //   /// \return String argument.
-    // public: std::string GetLimbArg(std::string _limb);
-
-    //   /// \brief Returns calculated frame matrices.
-    //   /// Used in UpdateLimbX functions. Public for UpdateLimbX extention.
-    //   /// \param[in] _bvhfile Name of BVH file to calculate.
-    //   /// \return Matrices of current frame.
-    // public: std::map<std::string, math::Matrix4> GetFrameOf(std::string _bvhfile,
-    // 							    double _scripttime) const;
-
     public: common::SkeletonAnimation* GetSkelAnimationData(std::string _bvhfile) const;
 
     public: common::Skeleton* GetSkeletonData() const;
@@ -163,23 +150,12 @@ namespace gazebo
     public: bool SetLimbMotion(std::string _limb,
 			       std::function<void (XtendedActorPtr, std::string)> _motion);
 
-    //   /// \brief Set argument of motion function for limb.
-    //   /// Used in StartLimbX functions. Public for StartLimbX extention.
-    //   /// \param[in] _limb Name of limb (node group).
-    //   /// \param[in] _arg Argument to pass.
-    // public: void SetLimbArg(std::string _limb, std::string _arg);
-
       /// \brief List of nodes in limb (node group).
     protected: std::map<std::string, std::vector<std::string> > limbNodeList;
 
       /// \brief UpdateLimbX function of limb.
     protected: std::map<std::string,
 			std::function<void (XtendedActorPtr, std::string)> > limbMotion;
-
-    //   /// \brief Stored argument for UpdateLimbX function of limb.
-    //   /// Example of argument: filename used in UpdateLimbX function.
-    //   /// String for flexibility. Argument could be "int int" if decoded in UpdateLimbX.
-    // protected: std::map<std::string, std::string> limbArg;
 
       /// \brief Current pose of Xtended Actor.
     protected: std::map<std::string, math::Matrix4> poseAtNow;

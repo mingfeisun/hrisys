@@ -46,7 +46,7 @@ namespace gazebo
 	    {
 	      std::string limbName = limbSdf->Get<std::string>("name");
 	      std::vector<std::string> nodeList;
-	      sdf::ElementPtr nodeSdf = _sdf->GetElement("node");
+	      sdf::ElementPtr nodeSdf = limbSdf->GetElement("node");
 	      while (nodeSdf)
 		{
 		  std::string nodeName = nodeSdf->Get<std::string>("name");
@@ -85,7 +85,9 @@ namespace gazebo
       if (bvhfileOnPlay == "")
 	{
 	  this->playStartTime = this->world->GetSimTime();
-	  this->lastScriptTime = std::numeric_limits<double>::max();
+	  for (unsigned int i = 0; i < this->skeleton->GetNumNodes(); ++i)
+	    poseAtNow[this->skeleton->GetNodeByHandle(i)->GetName()]
+	      = this->skeleton->GetNodeByHandle(i)->GetTransform();
 	}
     }
 
@@ -150,26 +152,6 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
-    // std::string XtendedActor::GetLimbArg(std::string _limb)
-    // {
-    //   if (limbArg.find(_limb) == limbArg.end())
-    // 	return std::string();
-    //   return limbArg[_limb];
-    // }
-
-    //////////////////////////////////////////////////
-    // std::map<std::string, math::Matrix4> XtendedActor::GetFrameOf
-    // (std::string _bvhfile, double _scripttime) const
-    // {
-    //   std::map<std::string, common::SkeletonAnimation*>::const_iterator iter
-    // 	= this->skelAnimation.find(_bvhfile);
-    //   if (iter == this->skelAnimation.end())
-    // 	return std::map<std::string, math::Matrix4>();
-    //   common::SkeletonAnimation *skelAnim = iter->second;
-    //   return skelAnim->GetPoseAt(_scripttime);
-    // }
-
-    //////////////////////////////////////////////////
     common::SkeletonAnimation* XtendedActor::GetSkelAnimationData(std::string _bvhfile) const
     {
       std::map<std::string, common::SkeletonAnimation*>::const_iterator iter
@@ -198,19 +180,12 @@ namespace gazebo
     bool XtendedActor::SetLimbMotion
     (std::string _limb, std::function<void (XtendedActorPtr, std::string)> _motion)
     {
-      if (limbMotion.find(_limb) == limbMotion.end())
+      if (limbNodeList.find(_limb) == limbNodeList.end())
 	return false;
       limbMotion[_limb] = _motion;
       return true;
     }
 
-    //////////////////////////////////////////////////    
-    // void XtendedActor::SetLimbArg(std::string _limb, std::string arg)
-    // {
-    //   if (limbArg.find(_limb) == limbArg.end())
-    // 	return;
-    //   limbArg[_limb] = _arg;
-    // }
 
 
 
@@ -292,7 +267,6 @@ namespace gazebo
 	  this->lastScriptTime[limbs[i]] = std::numeric_limits<double>::max();
 	  this->prevFrameTime[limbs[i]] = this->world->GetSimTime();
 	  this->loop[limbs[i]] = false;
-	  // this->bvhFileName[limbs[i]] = "";
 	  this->scriptLength[limbs[i]] = 0;
 	  this->startDelay[limbs[i]] = 0;
 	  this->skelAnim[limbs[i]] = nullptr;
@@ -310,23 +284,24 @@ namespace gazebo
 	}
       va_list args;
       va_start(args, _limb);
-      // this->bvhFileName[limb] = std::string(va_arg(args, char*));
       std::string bvhFileName = std::string(va_arg(args, char*));
       this->skelAnim[limb] = _actor->GetSkelAnimationData(bvhFileName);
       if (this->skelAnim[limb] == nullptr)
 	{
 	  std::cerr << "Unexpected BVH file called in XBVHLimb" << "\n";
+	  va_end(args);
 	  return;
 	}
       if (_actor->SetLimbMotion(limb, [=](XtendedActorPtr _a, std::string _s)
 				{return this->UpdateLimbX(_a, _s);}) == false)
 	{
 	  std::cerr << "Unexpected limb called in XBVHLimb -2" << "\n";
+	  va_end(args);
 	  return;
 	}
       this->playStartTime[limb] = this->world->GetSimTime();
       this->lastScriptTime[limb] = std::numeric_limits<double>::max();
-      this->loop[limb] = va_arg(args, bool);
+      this->loop[limb] = static_cast<bool>(va_arg(args, int));
       va_end(args);
       this->scriptLength[limb] = this->skelAnim[limb]->GetLength();
       /// set default next function to XNullLimb
@@ -371,9 +346,6 @@ namespace gazebo
 
       /// get node posture
       std::map<std::string, math::Matrix4> frame;
-      // frame = _actor->GetFrameOf(bvhFileName[_limb], scriptTime);
-      // if (frame.empty())
-      // 	return;
       frame = skelAnim[_limb]->GetPoseAt(scriptTime);
 
       /// get node list
