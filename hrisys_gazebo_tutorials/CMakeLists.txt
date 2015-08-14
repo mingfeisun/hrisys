@@ -45,7 +45,7 @@ endif()
 include_directories(${GAZEBO_INCLUDE_DIRS})
 link_directories(${GAZEBO_LIBRARY_DIRS})
 
-add_library(xtended_actor SHARED src/xtended_actor_tutorial.cc src/XtendedActor.cc)
+add_library(xtended_actor SHARED src/xtended_actor_tutorial.cc src/bvhactor.cc src/XtendedActor.cc)
 target_link_libraries(xtended_actor ${GAZEBO_LIBRARIES} ${Boost_LIBRARIES})
 
 add_library(bvh_actor SHARED src/bvh_actor_tutorial.cc src/bvhactor.cc)
