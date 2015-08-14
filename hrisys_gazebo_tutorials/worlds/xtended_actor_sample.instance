@@ -54,7 +54,7 @@
     <debug>false</debug>
   </bvh_animation>
 
-  <!--limb name="legs">
+  <limb name="legs">
     <node name="Hips"/>
     <node name="LHipJoint"/>
     <node name="LeftUpLeg"/>
@@ -89,6 +89,8 @@
     <node name="RightFingerBase"/>
     <node name="RightHandIndex1"/>
     <node name="RThumb"/>
-  </limb-->
+  </limb>
+
+  <!--auto_start>01_01</auto_start-->
 
 </xactor>

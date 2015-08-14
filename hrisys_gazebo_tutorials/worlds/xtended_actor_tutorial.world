@@ -12,9 +12,9 @@
     <plugin name="xtended_actor" filename="libxtended_actor.so"> 
       <sdftype>xtended_actor.sdf</sdftype>
       <instance>xtended_actor_sample.instance</instance>
-      <!--xtend type="bvh" limbs="legs upper"/>
+      <xtend type="bvh" limbs="legs upper"/>
       <start type="bvh" limb="legs" file="01_01" loop="true"/>
-      <start type="bvh" limb="upper" file="01_01" loop="true"/-->
+      <start type="bvh" limb="upper" file="01_02" loop="true"/>
     </plugin>
   </world>
 </sdf>
