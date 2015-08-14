@@ -1,17 +1,8 @@
 #include <sdf/sdf.hh>
 #include <gazebo/gazebo.hh>
 #include "gazebo/common/Skeleton.hh"
-#include "gazebo/common/MeshManager.hh"
-#include "gazebo/common/Mesh.hh"
-
 #include "gazebo/physics/World.hh"
-#include "gazebo/physics/Entity.hh"
-#include "gazebo/physics/Joint.hh"
-#include "gazebo/physics/Link.hh"
-#include "gazebo/physics/Model.hh"
-#include "gazebo/physics/PhysicsEngine.hh"
 #include "gazebo/physics/Actor.hh"
-#include "gazebo/physics/PhysicsIface.hh"
 
 #include "XtendedActor.hh"
 #include "LimbXtentions.hh"
