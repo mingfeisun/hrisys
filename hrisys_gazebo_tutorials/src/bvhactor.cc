@@ -4,6 +4,8 @@
 #include "gazebo/common/MeshManager.hh"
 #include "gazebo/common/Mesh.hh"
 
+#include "gazebo/util/OpenAL.hh"
+
 #include "gazebo/physics/World.hh"
 #include "gazebo/physics/Entity.hh"
 #include "gazebo/physics/Joint.hh"
@@ -12,6 +14,7 @@
 #include "gazebo/physics/PhysicsEngine.hh"
 #include "gazebo/physics/Actor.hh"
 #include "gazebo/physics/PhysicsIface.hh"
+#include "gazebo/physics/ContactManager.hh"
 
 #include "bvhactor.hh"
 
@@ -22,7 +25,7 @@ namespace gazebo
     //////////////////////////////////////////////////
     BVHactor::BVHactor(BasePtr _parent) : Actor(_parent)
     {
-      doDebug = false;
+      this->doDebug = false;
     };
 
     //////////////////////////////////////////////////
@@ -86,7 +89,7 @@ namespace gazebo
       /// show initial bvh pose if debug is true
       if (this->doDebug)
 	{
-	  this->SetPose(debugPose, this->world->GetSimTime().Double());
+	  this->SetPose(this->debugPose, this->world->GetSimTime().Double());
 	}
 
       /// automatic playing of bvh
@@ -95,6 +98,35 @@ namespace gazebo
 	  if (_sdf->Get<std::string>("auto_start") != "__no_auto_start__")
 	    this->StartBVH(_sdf->Get<std::string>("auto_start"));
 	}
+
+#ifdef HAVE_OPENAL
+      if (_sdf->HasElement("add_audio_to_link"))
+	{
+	  sdf::ElementPtr addToLinkSdf = _sdf->GetElement("add_audio_to_link");
+
+	  while (addToLinkSdf)
+	    {
+	      this->AddAudioToLink(addToLinkSdf);
+	      addToLinkSdf = addToLinkSdf->GetNextElement("add_audio_to_link");
+	    }
+	}
+#endif
+    }
+
+    //////////////////////////////////////////////////
+    void BVHactor::Fini()
+    {
+#ifdef HAVE_OPENAL
+      for (std::map<std::string, gazebo::util::LinkAudio>::iterator iter = this->linkAudio.begin();
+	   iter != this->linkAudio.end(); ++iter)
+	{
+	  // this->world->GetPhysicsEngine()->GetContactManager()
+	  //   ->RemoveFilter(this->GetScopedName() + "/audio_collision");
+	  iter->second.audioSink.reset();
+	}
+#endif
+
+      Actor::Fini();
     }
 
     //////////////////////////////////////////////////
@@ -109,8 +141,8 @@ namespace gazebo
       	  return;
       	}
 
-      bvhfileOnPlay = bvhfile;
-      this->scriptLength = this->skelAnimation[bvhfileOnPlay]->GetLength();
+      this->bvhfileOnPlay = bvhfile;
+      this->scriptLength = this->skelAnimation[this->bvhfileOnPlay]->GetLength();
       this->active = true;
       this->playStartTime = this->world->GetSimTime();
       this->lastScriptTime = std::numeric_limits<double>::max();
@@ -691,7 +723,7 @@ namespace gazebo
       /// at this point we are certain that a new frame will be animated
       this->prevFrameTime = currentTime;
 
-      common::SkeletonAnimation *skelAnim = this->skelAnimation[bvhfileOnPlay];
+      common::SkeletonAnimation *skelAnim = this->skelAnimation[this->bvhfileOnPlay];
       std::map<std::string, math::Matrix4> frame;
       frame = skelAnim->GetPoseAt(scriptTime);
 
@@ -710,6 +742,10 @@ namespace gazebo
 
       this->SetPose(frame, currentTime.Double());
       this->lastScriptTime = scriptTime;
+
+#ifdef HAVE_OPENAL
+      this->UpdateAudio();
+#endif
     }
 
     //////////////////////////////////////////////////
@@ -785,6 +821,95 @@ namespace gazebo
 	this->bonePosePub->Publish(msg);
       this->SetWorldPose(mainLinkPose, true, false);
     }
+
+#ifdef HAVE_OPENAL
+    //////////////////////////////////////////////////
+    void BVHactor::AddAudioToLink(sdf::ElementPtr _sdf)
+    {
+      std::string link = _sdf->Get<std::string>("link");
+
+      bool findLink = false;
+      for (unsigned int i = 0; i < this->skeleton->GetNumNodes(); ++i)
+	if (link == this->skeleton->GetNodeByHandle(i)->GetName())
+	  findLink = true;
+
+      if (findLink == false)
+	{
+	  std::cerr << "Illegal link detected while linking audio." << "\n";
+	  return;
+	}
+
+      gazebo::util::LinkAudio audio;
+
+      if (_sdf->HasElement("audio_source"))
+	{
+	  sdf::ElementPtr audioElem = _sdf->GetElement("audio_source");
+	  std::vector<std::string> collisionNames;
+
+	  while (audioElem)
+	    {
+	      gazebo::util::OpenALSourcePtr source =
+		gazebo::util::OpenAL::Instance()->CreateSource(audioElem);
+
+	      std::vector<std::string> names = source->GetCollisionNames();
+	      std::copy(names.begin(), names.end(), std::back_inserter(collisionNames));
+
+	      audioElem = audioElem->GetNextElement("audio_source");
+	      audio.audioSources.push_back(source);
+	    }
+	}
+
+      // if (!collisionNames.empty())
+      // 	{
+      // 	  for (std::vector<std::string>::iterator iter = collisionNames.begin();
+      // 	       iter != collisionNames.end(); ++iter)
+      // 	    {
+      // 	      (*iter) = this->GetChildLink(link)
+      // 		->GetScopedName() + "::" + (*iter);
+      // 	    }
+
+      // 	  std::string topic =
+      // 	    this->world->GetPhysicsEngine()->GetContactManager()
+      // 	    ->CreateFilter(this->GetChildLink(link)->GetScopedName()
+      // 			   + "/audio_collision", collisionNames);
+      // 	}
+
+      if (_sdf->HasElement("audio_sink"))
+	{
+	  audio.audioSink =
+	    gazebo::util::OpenAL::Instance()->CreateSink(_sdf->GetElement("audio_sink"));
+	}
+
+      this->linkAudio[link] = audio;
+    }
+
+    void BVHactor::UpdateAudio()
+    {
+      for (std::map<std::string, gazebo::util::LinkAudio>::iterator iter = this->linkAudio.begin();
+	   iter != this->linkAudio.end(); ++iter)
+	{
+	  if (iter->second.audioSink)
+	    {
+	      iter->second.audioSink->SetPose(this->GetChildLink(iter->first)
+					      ->GetWorldPose());
+	      iter->second.audioSink->SetVelocity(this->GetChildLink(iter->first)
+						  ->GetWorldLinearVel());
+	    }
+
+	  for (std::vector<gazebo::util::OpenALSourcePtr>::iterator it =
+		 iter->second.audioSources.begin();
+	       it != iter->second.audioSources.end(); ++it)
+	    {
+	      // if ((*it)->IsPlaying() == false)
+	      // 	{
+	      // 	  (*it)->Play();
+	      // 	}
+	      (*it)->SetPose(this->GetChildLink(iter->first)->GetWorldPose());
+	      (*it)->SetVelocity(this->GetChildLink(iter->first)->GetWorldLinearVel());
+	    }
+	}
+    }
+#endif
 
   }
 }
