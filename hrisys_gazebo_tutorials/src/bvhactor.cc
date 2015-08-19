@@ -99,7 +99,7 @@ namespace gazebo
 	    this->StartBVH(_sdf->Get<std::string>("auto_start"));
 	}
 
-#ifdef HAVE_OPENAL
+#ifdef HRISYS_HAVE_OPENAL
       if (_sdf->HasElement("add_audio_to_link"))
 	{
 	  sdf::ElementPtr addToLinkSdf = _sdf->GetElement("add_audio_to_link");
@@ -116,7 +116,7 @@ namespace gazebo
     //////////////////////////////////////////////////
     void BVHactor::Fini()
     {
-#ifdef HAVE_OPENAL
+#ifdef HRISYS_HAVE_OPENAL
       for (std::map<std::string, gazebo::util::LinkAudio>::iterator iter = this->linkAudio.begin();
 	   iter != this->linkAudio.end(); ++iter)
 	{
@@ -743,7 +743,7 @@ namespace gazebo
       this->SetPose(frame, currentTime.Double());
       this->lastScriptTime = scriptTime;
 
-#ifdef HAVE_OPENAL
+#ifdef HRISYS_HAVE_OPENAL
       this->UpdateAudio();
 #endif
     }
@@ -822,7 +822,7 @@ namespace gazebo
       this->SetWorldPose(mainLinkPose, true, false);
     }
 
-#ifdef HAVE_OPENAL
+#ifdef HRISYS_HAVE_OPENAL
     //////////////////////////////////////////////////
     void BVHactor::AddAudioToLink(sdf::ElementPtr _sdf)
     {
@@ -885,8 +885,8 @@ namespace gazebo
 
     void BVHactor::UpdateAudio()
     {
-      for (std::map<std::string, gazebo::util::LinkAudio>::iterator iter = this->linkAudio.begin();
-	   iter != this->linkAudio.end(); ++iter)
+      for (std::map<std::string, gazebo::util::LinkAudio>::iterator iter =
+	     this->linkAudio.begin(); iter != this->linkAudio.end(); ++iter)
 	{
 	  if (iter->second.audioSink)
 	    {

@@ -49,7 +49,7 @@ include (FindOpenAL)
 if (NOT OPENAL_FOUND)
   message(WARNING "OpenAL not found, some functions will be disabled")
 else()
-  add_definitions(-DHAVE_OPENAL)
+  add_definitions(-DHRISYS_HAVE_OPENAL)
   include_directories(${OPENAL_INCLUDE_DIR})
 endif()
 

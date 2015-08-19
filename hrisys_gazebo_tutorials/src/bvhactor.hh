@@ -8,7 +8,7 @@ namespace gazebo
 {
   namespace util
   {
-# ifdef HAVE_OPENAL
+# ifdef HRISYS_HAVE_OPENAL
     class LinkAudio
     {
     public: LinkAudio() {};
@@ -42,7 +42,7 @@ namespace gazebo
     public: void StartBVH(std::string bvhfile);
     public: void Update();
     protected: void SetPose(std::map<std::string, math::Matrix4> _frame, double _time);
-# ifdef HAVE_OPENAL
+# ifdef HRISYS_HAVE_OPENAL
     public: void AddAudioToLink(sdf::ElementPtr _sdf);
     public: void UpdateAudio();
 
