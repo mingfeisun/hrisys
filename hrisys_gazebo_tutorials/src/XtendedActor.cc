@@ -71,7 +71,7 @@ namespace gazebo
       for (std::map<std::string, std::vector<std::string> >::iterator iter=
 	     limbNodeList.begin(); iter != limbNodeList.end(); ++iter)
 	xNull->StartLimbX(boost::static_pointer_cast<XtendedActor>(shared_from_this()),
-			  iter->first);
+			  iter->first, "");
 
       /// set when xtended actor is not an ordinary bvh player
       if (bvhfileOnPlay == "")
@@ -196,7 +196,8 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
-    void XNullLimb::StartLimbX(XtendedActorPtr _actor, std::string _limb, ...)
+    void XNullLimb::StartLimbX(XtendedActorPtr _actor,
+			       std::string _limb, std::string _arg)
     {
       if (_actor->SetLimbMotion(_limb, [=](XtendedActorPtr _a, std::string _s)
 				{return this->UpdateLimbX(_a, _s);}) == false)

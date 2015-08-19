@@ -13,8 +13,8 @@
       <sdftype>xtended_actor.sdf</sdftype>
       <instance>xtended_actor_sample.instance</instance>
       <xtend type="bvh" limbs="legs upper"/>
-      <start type="bvh" limb="legs" file="01_01" loop="true"/>
-      <start type="bvh" limb="upper" file="01_02" loop="true"/>
+      <start type="bvh" limb="legs" arg="01_01 1"/>
+      <start type="bvh" limb="upper" arg="01_02 1"/>
     </plugin>
   </world>
 </sdf>
