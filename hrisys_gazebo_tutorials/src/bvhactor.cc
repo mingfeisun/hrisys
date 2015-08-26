@@ -848,14 +848,15 @@ namespace gazebo
 
 	  while (audioElem)
 	    {
-	      gazebo::util::OpenALSourcePtr source =
-		gazebo::util::OpenAL::Instance()->CreateSource(audioElem);
+	      //// something fails
+	      // gazebo::util::OpenALSourcePtr source =
+	      // 	gazebo::util::OpenAL::Instance()->CreateSource(audioElem);
 
-	      std::vector<std::string> names = source->GetCollisionNames();
-	      std::copy(names.begin(), names.end(), std::back_inserter(collisionNames));
+	      // std::vector<std::string> names = source->GetCollisionNames();
+	      // std::copy(names.begin(), names.end(), std::back_inserter(collisionNames));
 
-	      audioElem = audioElem->GetNextElement("audio_source");
-	      audio.audioSources.push_back(source);
+	      // audioElem = audioElem->GetNextElement("audio_source");
+	      // audio.audioSources.push_back(source);
 	    }
 	}
 
@@ -876,8 +877,9 @@ namespace gazebo
 
       if (_sdf->HasElement("audio_sink"))
 	{
-	  audio.audioSink =
-	    gazebo::util::OpenAL::Instance()->CreateSink(_sdf->GetElement("audio_sink"));
+	  //// something fails
+	  // audio.audioSink =
+	  //   gazebo::util::OpenAL::Instance()->CreateSink(_sdf->GetElement("audio_sink"));
 	}
 
       this->linkAudio[link] = audio;
