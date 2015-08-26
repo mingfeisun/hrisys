@@ -5,6 +5,7 @@
 #include "bvhactor.hh"
 #include "LimbXtentions.hh"
 #include "xtends/XBvhLimb.hh"
+#include "xtends/XTrackerLimb.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo
@@ -60,6 +61,12 @@ namespace gazebo
       		{
       		  this->xtentions["bvh"].reset(new physics::XBvhLimb(_world));
       		}
+#ifdef HRISYS_HAVE_OPENNI
+	      else if (xtentionType == "nite")
+		{
+		  this->xtentions["nite"].reset(new physics::XTrackerLimb(_world));
+		}
+#endif
 	      else
 		{
 		  xtendedSdf = xtendedSdf->GetNextElement("xtend");

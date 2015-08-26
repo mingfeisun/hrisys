@@ -13,8 +13,10 @@
       <sdftype>xtended_actor.sdf</sdftype>
       <instance>xtended_actor_sample.instance</instance>
       <xtend type="bvh" limbs="legs upper"/>
+      <xtend type="nite" actors="actor"/>
       <start type="bvh" limb="legs" arg="01_01 1"/>
       <start type="bvh" limb="upper" arg="01_02 1"/>
+      <!--start type="nite" limb="upper" arg="1"/-->
     </plugin>
   </world>
 </sdf>
