@@ -66,6 +66,8 @@ namespace gazebo
 
     public: common::Skeleton* GetSkeletonData() const;
 
+    public: std::map<std::string, std::string> GetSkelMap(std::string _mapName) const;
+
       /// \brief Set pose of node.
       /// Used in UpdateLimbX functions. Public for UpdateLimbX extention.
       /// \param[in] _node Name of node.

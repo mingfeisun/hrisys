@@ -160,6 +160,16 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
+    std::map<std::string, std::string> XtendedActor::GetSkelMap(std::string _mapName) const
+    {
+      std::map<std::string, std::map<std::string, std::string> >::const_iterator iter
+	= this->skelNodesMap.find(_mapName);
+      if (iter == this->skelNodesMap.end())
+	return std::map<std::string, std::string>();
+      return iter->second;
+    }
+
+    //////////////////////////////////////////////////
     bool XtendedActor::SetNodeTransform(std::string _node, math::Matrix4 _pose)
     {
       if (poseAtNow.find(_node) == poseAtNow.end())
