@@ -91,6 +91,10 @@ namespace gazebo
     protected: int onRegister;
 
     protected: bool doTrack;
+
+    private: class XTrackerDevel;
+
+    private: XTrackerDevel *develPtr;
     };
 
     typedef boost::shared_ptr<XTrackerLimb> XTrackerLimbPtr;
