@@ -6,6 +6,8 @@
 
 #include "gazebo/physics/World.hh"
 
+#include "../utils/UncertainMemoryFilter.hh"
+
 #include "../XtendedActor.hh"
 #include "../LimbXtentions.hh"
 #include "XTrackerLimb.hh"
@@ -17,7 +19,8 @@ namespace gazebo
   namespace physics
   {
     //////////////////////////////////////////////////
-    struct TestSample {
+    struct TestSample
+    {
       double x;
       double y;
       double z;
@@ -39,6 +42,10 @@ namespace gazebo
     public: unsigned int count;
 
     public: std::vector<std::map<nite::JointType, TestSample> > samples;
+
+    public: std::function<double(math::Vector3, math::Vector3)> quadratic;
+
+    public: std::map<nite::JointType, UncertainMemoryFilterPtr<math::Vector3> > longFilter;
     };
 
     //////////////////////////////////////////////////
@@ -147,11 +154,8 @@ namespace gazebo
             }
 
 	  std::map<std::string, std::string> rSkelMap;
-          for (std::map<std::string, std::string>::iterator iter =
-                 skelMap.begin(); iter != skelMap.end(); ++iter)
-            {
-              rSkelMap[iter->second] = iter->first;
-            }
+          for (auto iter = skelMap.begin(); iter != skelMap.end(); ++iter)
+	    rSkelMap[iter->second] = iter->first;
 
           bool errorDetectedInCheck = false;
 	  std::map<std::string, math::Matrix4> translationAligner;
@@ -276,8 +280,7 @@ namespace gazebo
             }
 
           actorSkelManager.joints.resize(NUM_OF_NITE_JOINTS);
-          for (std::map<std::string, XLimbTemplateJoint>::iterator iter =
-                 templateSkelJoints.begin();
+          for (auto iter = templateSkelJoints.begin();
                iter != templateSkelJoints.end(); ++iter)
             {
 	      common::SkeletonNode* thisJoint = nodes[(iter->second).nodeId];
@@ -361,6 +364,19 @@ namespace gazebo
 	      this->develPtr->checkFile = develSdf->Get<std::string>("file");
 	      this->develPtr->from = develSdf->Get<int>("from");
 	      this->develPtr->to = develSdf->Get<int>("to");
+	      sdf::ElementPtr filterSdf = develSdf->GetElement("filter");
+	      this->develPtr->quadratic =
+		[=](math::Vector3 v, math::Vector3 u){ return (v - u).GetLength(); };
+	      for (unsigned int i = 0; i < this->skelManager[actors[0]].joints.size(); ++i)
+		{
+		  nite::JointType type = this->skelManager[actors[0]].joints[i].nameInNite;
+		  auto p =
+		    UncertainMemoryFilterPtr<math::Vector3>
+		    (new UncertainMemoryFilter<math::Vector3>(filterSdf));
+		  this->develPtr->longFilter[type] = p;
+		  this->develPtr->longFilter[type]->
+		    SetCostFunction(this->develPtr->quadratic);
+		}
 	    }
       }}
     }
@@ -530,8 +546,7 @@ namespace gazebo
       {{
 	  std::map<std::string, XLimbActorSkeletonManager>::iterator it;
 
-	  for (std::map<std::string, XLimbActorSkeletonManager>::iterator iter =
-		 this->skelManager.begin(); iter != this->skelManager.end(); ++iter)
+	  for (auto iter = this->skelManager.begin(); iter != this->skelManager.end(); ++iter)
 	    if ((iter->second).userId == 1)
 	      {
 		it = iter;
@@ -590,6 +605,14 @@ namespace gazebo
 
 		  setTemplate(this->develPtr->samples[this->develPtr->count]);
 
+		  /// Filter data.
+		  this->develPtr->longFilter[joint.nameInNite]->AddData(targetNitePos);
+		  targetNitePos =
+		    this->develPtr->longFilter[joint.nameInNite]->GetData();
+		  this->develPtr->longFilter[joint.childInNite]->AddData(childNitePos);
+		  childNitePos =
+		    this->develPtr->longFilter[joint.childInNite]->GetData();
+
 		  math::Vector3 atT0 = joint.childTranslate;
 		  math::Vector3 atTn = childNitePos - targetNitePos;
 
@@ -611,8 +634,7 @@ namespace gazebo
 	    }
 
 	  if (target->GetName() == it->first)
-	    for (std::map<std::string, math::Matrix4>::iterator iter =
-		   frame.begin(); iter != frame.end(); ++iter)
+	    for (auto iter = frame.begin(); iter != frame.end(); ++iter)
 	      target->SetNodeTransform(iter->first, iter->second);
 
 	  this->develPtr->count++;
