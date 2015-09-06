@@ -7,6 +7,7 @@
 #include "gazebo/physics/World.hh"
 
 #include "../utils/UncertainMemoryFilter.hh"
+#include "../utils/GreedyDecisionFilter.hh"
 
 #include "../XtendedActor.hh"
 #include "../LimbXtentions.hh"
@@ -46,6 +47,8 @@ namespace gazebo
     public: std::function<double(math::Vector3, math::Vector3)> quadratic;
 
     public: std::map<nite::JointType, UncertainMemoryFilterPtr<math::Vector3> > longFilter;
+
+    public: std::map<nite::JointType, GreedyDecisionFilterPtr<math::Vector3> > shortFilter;
     };
 
     //////////////////////////////////////////////////
@@ -364,7 +367,8 @@ namespace gazebo
 	      this->develPtr->checkFile = develSdf->Get<std::string>("file");
 	      this->develPtr->from = develSdf->Get<int>("from");
 	      this->develPtr->to = develSdf->Get<int>("to");
-	      sdf::ElementPtr filterSdf = develSdf->GetElement("filter");
+	      sdf::ElementPtr filterSdf = develSdf->GetElement("filter0");
+	      sdf::ElementPtr filterSdf1 = develSdf->GetElement("filter1");
 	      this->develPtr->quadratic =
 		[=](math::Vector3 v, math::Vector3 u){ return (v - u).GetLength(); };
 	      for (unsigned int i = 0; i < this->skelManager[actors[0]].joints.size(); ++i)
@@ -373,8 +377,14 @@ namespace gazebo
 		  auto p =
 		    UncertainMemoryFilterPtr<math::Vector3>
 		    (new UncertainMemoryFilter<math::Vector3>(filterSdf));
+		  auto p1 =
+		    GreedyDecisionFilterPtr<math::Vector3>
+		    (new GreedyDecisionFilter<math::Vector3>(filterSdf1));
 		  this->develPtr->longFilter[type] = p;
 		  this->develPtr->longFilter[type]->
+		    SetCostFunction(this->develPtr->quadratic);
+		  this->develPtr->shortFilter[type] = p1;
+		  this->develPtr->shortFilter[type]->
 		    SetCostFunction(this->develPtr->quadratic);
 		}
 	    }
@@ -569,6 +579,30 @@ namespace gazebo
 
 	  std::map<std::string, math::Matrix4> frame;
 
+	  /// Filter data.
+	  std::map<nite::JointType, TestSample> sampleData =
+	    this->develPtr->samples[this->develPtr->count];
+
+	  for (auto iter = sampleData.begin(); iter != sampleData.end(); ++iter)
+	    {
+	      TestSample samplePos = iter->second;
+	      auto iterator = this->develPtr->longFilter.find(iter->first);
+	      if (iterator == this->develPtr->longFilter.end())
+		continue;
+	      this->develPtr->longFilter[iter->first]->AddData(math::Vector3(samplePos.x,
+									     samplePos.y,
+									     samplePos.z));
+	      math::Vector3 filteredPos = this->develPtr->longFilter[iter->first]->GetData();
+	      this->develPtr->shortFilter[iter->first]->AddData(math::Vector3(filteredPos.x,
+									      filteredPos.y,
+									      filteredPos.z));
+	      filteredPos = this->develPtr->shortFilter[iter->first]->GetData();
+	      samplePos.x = filteredPos.x;
+	      samplePos.y = filteredPos.y;
+	      samplePos.z = filteredPos.z;
+	      iter->second = samplePos;
+	    }
+
 	  for (unsigned int j = 0; j < (it->second).joints.size(); ++j)
 	    {
 	      XLimbSkeletonJoint joint = (it->second).joints[j];
@@ -603,15 +637,7 @@ namespace gazebo
 						   testSample[joint.childInNite].y,
 						   -testSample[joint.childInNite].z); };
 
-		  setTemplate(this->develPtr->samples[this->develPtr->count]);
-
-		  /// Filter data.
-		  this->develPtr->longFilter[joint.nameInNite]->AddData(targetNitePos);
-		  targetNitePos =
-		    this->develPtr->longFilter[joint.nameInNite]->GetData();
-		  this->develPtr->longFilter[joint.childInNite]->AddData(childNitePos);
-		  childNitePos =
-		    this->develPtr->longFilter[joint.childInNite]->GetData();
+		  setTemplate(sampleData);
 
 		  math::Vector3 atT0 = joint.childTranslate;
 		  math::Vector3 atTn = childNitePos - targetNitePos;
