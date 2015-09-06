@@ -6,6 +6,9 @@
 #include <NiTE.h>
 #include "../LimbXtentions.hh"
 
+#include "../utils/UncertainMemoryFilter.hh"
+#include "../utils/GreedyDecisionFilter.hh"
+
 namespace gazebo
 {
   namespace physics
@@ -44,6 +47,10 @@ namespace gazebo
     public: unsigned int confidentNTimes;
 
     public: bool trackJoint;
+
+    public: UncertainMemoryFilterPtr<math::Vector3> longFilter;
+
+    public: GreedyDecisionFilterPtr<math::Vector3> shortFilter;
     };
 
     class XLimbActorSkeletonManager
@@ -59,6 +66,10 @@ namespace gazebo
     public: LimbXtentionsPtr next;
 
     public: std::string nextArg;
+
+    public: bool longFilterOn;
+
+    public: bool shortFilterOn;
     };
 
     class XTrackerLimb : public LimbXtentions
@@ -91,6 +102,8 @@ namespace gazebo
     protected: int onRegister;
 
     protected: bool doTrack;
+
+    public: std::function<double(math::Vector3, math::Vector3)> quadratic;
 
     private: class XTrackerDevel;
 

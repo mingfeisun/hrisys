@@ -6,6 +6,9 @@
 
 #include "gazebo/physics/World.hh"
 
+#include "../utils/UncertainMemoryFilter.hh"
+#include "../utils/GreedyDecisionFilter.hh"
+
 #include "../XtendedActor.hh"
 #include "../LimbXtentions.hh"
 #include "XTrackerLimb.hh"
@@ -123,6 +126,25 @@ namespace gazebo
       std::istream_iterator<std::string> begin(ss);
       std::istream_iterator<std::string> end;
       std::vector<std::string> actors(begin, end);
+
+      /// setup filters
+      sdf::ElementPtr longFilterSdf;
+      sdf::ElementPtr shortFilterSdf;
+      bool hasLongFilter = false;
+      bool hasShortFilter = false;
+      if (_sdf->HasElement("filter0"))
+	{
+	  longFilterSdf = _sdf->GetElement("filter0");
+	  hasLongFilter = true;
+	}
+      if (_sdf->HasElement("filter1"))
+	{
+	  shortFilterSdf = _sdf->GetElement("filter1");
+	  hasShortFilter = true;
+	}
+      this->quadratic =
+	[=](math::Vector3 v, math::Vector3 u){ return (v - u).GetLength(); };
+
 
       for (unsigned int i = 0; i < actors.size(); ++i)
         {
@@ -347,8 +369,28 @@ namespace gazebo
               joint.posteriorFixer = rotationAligner[iter->first];
               joint.confidentNTimes = 0;
               joint.trackJoint = false;
+	      /// filters
+	      if (hasLongFilter)
+		{
+		  joint.longFilter = UncertainMemoryFilterPtr<math::Vector3>
+		    (new UncertainMemoryFilter<math::Vector3>(longFilterSdf));
+		  joint.longFilter->SetCostFunction(this->quadratic);
+		}
+	      if (hasShortFilter)
+		{
+		  joint.shortFilter = GreedyDecisionFilterPtr<math::Vector3>
+		    (new GreedyDecisionFilter<math::Vector3>(shortFilterSdf));
+		  joint.shortFilter->SetCostFunction(this->quadratic);
+		}
+
               actorSkelManager.joints[(iter->second).nodeId] = joint;
             }
+
+	  /// filters
+	  if (hasLongFilter)
+	    actorSkelManager.longFilterOn = true;
+	  if (hasShortFilter)
+	    actorSkelManager.shortFilterOn = true;
 
           /// save the fix-matrix
           this->skelManager[actors[i]] = actorSkelManager;
@@ -494,6 +536,42 @@ namespace gazebo
             {
 	      std::map<std::string, math::Matrix4> frame;
 
+	      /// filter beforehand
+	      std::map<nite::JointType, math::Vector3> filteredJoint;
+	      for (unsigned int j = 0; j < (it->second).joints.size(); ++j)
+		{
+		  XLimbSkeletonJoint joint = (it->second).joints[j];
+
+		  if (!joint.trackJoint)
+		    continue;
+
+		  nite::SkeletonJoint targetJoint =
+		    user.getSkeleton().getJoint(joint.nameInNite);
+
+		  /// Only add to filter when there is confidence.
+		  if (targetJoint.getPositionConfidence() < 0.5f)
+		    continue;
+
+		  /// Nite is Z_REVERSE, X_REVERSE, left->right coordinate.
+		  math::Vector3 filteredPos (-targetJoint.getPosition().x,
+					     targetJoint.getPosition().y,
+					     -targetJoint.getPosition().z);
+
+		  if ((it->second).longFilterOn)
+		    {
+		      (it->second).joints[j].longFilter->AddData(filteredPos);
+		      filteredPos = (it->second).joints[j].longFilter->GetData();
+		    }
+
+		  if ((it->second).shortFilterOn)
+		    {
+		      (it->second).joints[j].shortFilter->AddData(filteredPos);
+		      filteredPos = (it->second).joints[j].shortFilter->GetData();
+		    }
+
+		  filteredJoint[joint.nameInNite] = filteredPos;
+		}
+
               for (unsigned int j = 0; j < (it->second).joints.size(); ++j)
                 {
                   XLimbSkeletonJoint joint = (it->second).joints[j];
@@ -532,15 +610,8 @@ namespace gazebo
 			  (childJoint.getPositionConfidence() < 0.5f))
 			continue;
 
-		      /// Nite is Z_REVERSE, X_REVERSE, left->right coordinate.
-		      math::Vector3 targetNitePos
-			(-targetJoint.getPosition().x,
-			 targetJoint.getPosition().y,
-			 -targetJoint.getPosition().z);
-		      math::Vector3 childNitePos
-			(-childJoint.getPosition().x,
-			 childJoint.getPosition().y,
-			 -childJoint.getPosition().z);
+		      math::Vector3 targetNitePos = filteredJoint[joint.nameInNite];
+		      math::Vector3 childNitePos = filteredJoint[joint.childInNite];
 
 		      math::Vector3 atT0 = joint.childTranslate;
 		      math::Vector3 atTn = childNitePos - targetNitePos;

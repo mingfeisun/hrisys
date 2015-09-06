@@ -13,7 +13,10 @@
       <sdftype>xtended_actor.sdf</sdftype>
       <instance>xtended_actor_sample.instance</instance>
       <xtend type="bvh" limbs="legs upper"/>
-      <xtend type="nite" actors="actor"/>
+      <xtend type="nite" actors="actor">
+	<filter0 observations="30" rejectSize="10" memorySize="30" uncertaintyThre="2" clusterDist="50"/>
+	<!--filter1 observations="6" greedyThre="4" clusterDist="50"/-->
+      </xtend>
       <start type="bvh" limb="legs" arg="01_01 1"/>
       <start type="bvh" limb="upper" arg="01_02 1"/>
       <!--start type="nite" limb="upper" arg="1"/-->
