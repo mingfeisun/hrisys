@@ -86,12 +86,6 @@ namespace gazebo
     //////////////////////////////////////////////////
     void XtendedActor::Update()
     {
-      if (this->autoStart)
-	{
-	  Actor::Update();
-	  return;
-	}
-
       if (this->bvhfileOnPlay != "")
 	{
 	  BVHactor::Update();

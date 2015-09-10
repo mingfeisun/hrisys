@@ -6,29 +6,9 @@
 
 namespace gazebo
 {
-  namespace util
-  {
-# ifdef HRISYS_HAVE_OPENAL
-    class LinkAudio
-    {
-    public: LinkAudio() {};
-
-      /// \brief All the audio sources
-    public: std::vector<OpenALSourcePtr> audioSources;
-
-      /// \brief An audio sink
-    public: OpenALSinkPtr audioSink;
-
-      /// \brief Subscriber to contacts with this collision. Used for audio
-      /// playback.
-    // public: gazebo::transport::SubscriberPtr audioContactsSub;
-    };
-# endif
-  }
-
   namespace physics
   {
-    class BVHactor : public Actor
+    class BVHactor : public Model
     {
     public: explicit BVHactor(BasePtr _parent);
     public: virtual ~BVHactor();
@@ -41,16 +21,30 @@ namespace gazebo
 				      bool _debug=false);
     public: void StartBVH(std::string bvhfile);
     public: void Update();
+    protected: void MeshLoad(sdf::ElementPtr _sdf);
+    protected: void LoadAnimation(sdf::ElementPtr _sdf);
     protected: void SetPose(std::map<std::string, math::Matrix4> _frame, double _time);
-# ifdef HRISYS_HAVE_OPENAL
-    public: void AddAudioToLink(sdf::ElementPtr _sdf);
-    public: void UpdateAudio();
 
-    protected: std::map<std::string, gazebo::util::LinkAudio> linkAudio;
-# endif
     protected: std::string bvhfileOnPlay;
     protected: bool doDebug;
     protected: std::map<std::string, math::Matrix4> debugPose;
+
+    protected: const common::Mesh *mesh;
+    protected: common::Skeleton *skeleton;
+    protected: std::string skinFile;
+    protected: double skinScale;
+    protected: double startDelay;
+    protected: double scriptLength;
+    protected: double lastScriptTime;
+    protected: bool loop;
+    protected: bool active;
+    protected: common::Time prevFrameTime;
+    protected: common::Time playStartTime;
+    protected: std::map<std::string, common::SkeletonAnimation*> skelAnimation;
+    protected: std::map<std::string, std::map<std::string, std::string> > skelNodesMap;
+    protected: std::string visualName;
+    protected: uint32_t visualId;
+    protected: transport::PublisherPtr bonePosePub;
     };
 
     typedef boost::shared_ptr<BVHactor> BVHactorPtr;
