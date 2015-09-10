@@ -65,6 +65,12 @@
     <pair dae="RightHand" bvh="RIGHT_HAND"/>
   </bvh_map>
 
+  <animation name="walking">
+    <filename>walk.dae</filename>
+    <scale>1.0</scale>
+    <interpolate_x>true</interpolate_x>
+  </animation>
+
   <bvh_animation name="01_01">
     <filename><!--write here--></filename>
     <interpolate_x>false</interpolate_x>

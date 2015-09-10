@@ -6,6 +6,7 @@
 #include "LimbXtentions.hh"
 #include "xtends/XBvhLimb.hh"
 #include "xtends/XTrackerLimb.hh"
+#include "xtends/XWalkerLimb.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo
@@ -67,6 +68,10 @@ namespace gazebo
 		  this->xtentions["nite"].reset(new physics::XTrackerLimb(_world));
 		}
 #endif
+	      else if (xtentionType == "walker")
+		{
+		  this->xtentions["walker"].reset(new physics::XWalkerLimb(_world));
+		}
 	      else
 		{
 		  xtendedSdf = xtendedSdf->GetNextElement("xtend");
