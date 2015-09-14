@@ -5,6 +5,11 @@
 #include "ActionTrigger.hh"
 #include "XBvhLimb.hh"
 
+# ifdef HRISYS_HAVE_ROS
+#include <ros/ros.h>
+#include "wiimote/State.h"
+# endif
+
 namespace gazebo
 {
   namespace physics
@@ -20,6 +25,28 @@ namespace gazebo
 
     typedef boost::shared_ptr<KeyBoardWalkerTrigger> KeyBoardWalkerTriggerPtr;
 
+# ifdef HRISYS_HAVE_ROS
+    class WiiWalkerTrigger : public ActionTrigger<math::Vector3>
+    {
+    public: WiiWalkerTrigger();
+
+    public: virtual ~WiiWalkerTrigger();
+
+    public: void TriggerProcess();
+
+    private: void Callback(const wiimote::State::ConstPtr& msg);
+
+    private: ros::NodeHandle nh;
+
+    private: ros::Subscriber sub;
+
+    private: float moveX;
+
+    private: float moveY;
+    };
+
+    typedef boost::shared_ptr<WiiWalkerTrigger> WiiWalkerTriggerPtr;
+# endif
 
     class XWalkerLimb : public XBvhLimb
     {

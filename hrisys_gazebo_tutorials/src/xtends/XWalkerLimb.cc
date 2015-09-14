@@ -9,6 +9,11 @@
 #include "XBvhLimb.hh"
 #include "XWalkerLimb.hh"
 
+# ifdef HRISYS_HAVE_ROS
+#include <ros/ros.h>
+#include "wiimote/State.h"
+# endif
+
 namespace gazebo
 {
   namespace physics
@@ -16,7 +21,7 @@ namespace gazebo
     //////////////////////////////////////////////////
     KeyBoardWalkerTrigger::KeyBoardWalkerTrigger() : ActionTrigger()
     {
-      value = math::Vector3(0, 0, 0);
+      this->value = math::Vector3(0, 0, 0);
     }
 
     //////////////////////////////////////////////////
@@ -50,14 +55,10 @@ namespace gazebo
 	  return;
 	}
 
-      if (c == 'a')
-	value = math::Vector3(0.0, 0.1, 0.0);
-      if (c == 'd')
-	value = math::Vector3(0.0, -0.1, 0.0);
-      if (c == 's')
-	value = math::Vector3(-0.1, 0.0, 0.0);
-      if (c == 'w')
-	value = math::Vector3(0.1, 0.0, 0.0);
+      if (c == 'a') this->value = math::Vector3(0.0, 0.1, 0.0);
+      if (c == 'd') this->value = math::Vector3(0.0, -0.1, 0.0);
+      if (c == 's') this->value = math::Vector3(-0.1, 0.0, 0.0);
+      if (c == 'w') this->value = math::Vector3(0.1, 0.0, 0.0);
 
       if ((this->state == TriggerState::T_OFF) ||
 	  (this->state == TriggerState::T_RELEASE))
@@ -66,6 +67,72 @@ namespace gazebo
 	this->state = TriggerState::T_ON;
       return;
     }
+
+
+# ifdef HRISYS_HAVE_ROS
+    //////////////////////////////////////////////////
+    WiiWalkerTrigger::WiiWalkerTrigger() : ActionTrigger(), nh()
+    {
+      this->moveX = 0.0;
+      this->moveY = 0.0;
+      this->value = math::Vector3(0, 0, 0);
+
+      if (!ros::isInitialized())
+	{
+	  ROS_FATAL_STREAM("ROS initialization error!");
+	  return;
+	}
+
+      this->sub = nh.subscribe("/wiimote/state", 1,
+			       &WiiWalkerTrigger::Callback, this);
+    }
+
+    //////////////////////////////////////////////////
+    WiiWalkerTrigger::~WiiWalkerTrigger()
+    {
+    }
+
+    //////////////////////////////////////////////////
+    void WiiWalkerTrigger::TriggerProcess()
+    {
+      if (moveX == 0.0 && moveY == 0.0)
+	{
+	  if ((this->state == TriggerState::T_ON) ||
+	      (this->state == TriggerState::T_FIRE))
+	    this->state = TriggerState::T_RELEASE;
+	  else
+	    this->state = TriggerState::T_OFF;
+	  return;
+	}
+
+      this->value = math::Vector3(moveX, moveY, 0.0);
+
+      if ((this->state == TriggerState::T_OFF) ||
+	  (this->state == TriggerState::T_RELEASE))
+	this->state = TriggerState::T_FIRE;
+      else
+	this->state = TriggerState::T_ON;
+      return;
+    }
+
+    //////////////////////////////////////////////////
+    void WiiWalkerTrigger::Callback(const wiimote::State::ConstPtr& msg)
+    {
+      float x = fabs(msg->nunchuk_joystick_zeroed[1]);
+      float y = fabs(msg->nunchuk_joystick_zeroed[0]);
+      float sgnx = 0.0, sgny = 0.0;
+      if (x > 0.0) sgnx = msg->nunchuk_joystick_zeroed[1] / x;
+      if (y > 0.0) sgny = msg->nunchuk_joystick_zeroed[0] / y;
+
+      if (x > 0.8) this->moveX = sgnx * 0.1;
+      else if (x > 0.2) this->moveX = sgnx * x * 0.1;
+      else this->moveX = 0.0;
+
+      if (y > 0.8) this->moveY = sgny * 0.1;
+      else if (y > 0.2) this->moveY = sgny * y * 0.1;
+      else this->moveY = 0.0;
+    }
+# endif
 
 
     //////////////////////////////////////////////////
@@ -86,6 +153,10 @@ namespace gazebo
       std::string triggerType = _sdf->Get<std::string>("trigger");
       if (triggerType == "keyboard")
 	this->trigger.reset(new KeyBoardWalkerTrigger());
+# ifdef HRISYS_HAVE_ROS
+      if (triggerType == "wii")
+	this->trigger.reset(new WiiWalkerTrigger());
+# endif
 
       this->paramT = 0.0;
       this->deltaT = 0.0;
