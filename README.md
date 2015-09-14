@@ -7,6 +7,10 @@ Packages for Gazebo7 or higher are to be developed in the near future.
 recommended:
 Ubuntu 14.04 LTS, ROS Indigo, Gazebo 5.1.0, SDF 2.3.2
 
+dependency:  
+(required) Gazebo5, SDF2, Boost  
+(optional) OpenAL, ROS, OpenNI2, NiTE2, Eigen3
+
 ### Build
 
 1. catkin build (with ROS)
@@ -84,11 +88,12 @@ hrisys allows limb motion extentions. Further information are to be added.
 - Grouping skeleton nodes into limbs.
 - Apply different BVH motions to each limb.
 - Tutorials for XtendedActor class.
+- XTracker: Limb operation with depth sensor. *dependency: OpenNI2 and NiTE2*
+- XWalker: Limb walking motion control with controller. *dependency: ROS (wiimote)*
 
 ### To be developed
 
-- Operating actor via openni2 and tf.
-- Operating actor via openni2 + Wii controller.
+- Collision detection.
 - Automatic object grasping for actor operation using inverse-kinematics.
 - BVH loading for non-compatible models. 
 - Eye-sight movement.
