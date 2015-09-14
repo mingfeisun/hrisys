@@ -4,29 +4,44 @@
 #include "gazebo/common/MeshManager.hh"
 #include "gazebo/common/Mesh.hh"
 
+#include "gazebo/util/OpenAL.hh"
+
 #include "gazebo/physics/World.hh"
 #include "gazebo/physics/Entity.hh"
 #include "gazebo/physics/Joint.hh"
+#include "gazebo/physics/Collision.hh"
 #include "gazebo/physics/Link.hh"
 #include "gazebo/physics/Model.hh"
 #include "gazebo/physics/PhysicsEngine.hh"
 #include "gazebo/physics/Actor.hh"
 #include "gazebo/physics/PhysicsIface.hh"
+#include "gazebo/physics/ContactManager.hh"
 
 #include "bvhactor.hh"
+
+# ifdef HRISYS_HAVE_EIGEN
+#include <Eigen/Core>
+#include <Eigen/SVD>
+# endif
 
 namespace gazebo
 {
   namespace physics
   {
     //////////////////////////////////////////////////
-    BVHactor::BVHactor(BasePtr _parent) : Actor(_parent)
+    BVHactor::BVHactor(BasePtr _parent) : Model(_parent)
     {
-      doDebug = false;
-    };
+      this->AddType(ACTOR);
+      this->mesh = NULL;
+      this->skeleton = NULL;
+    }
 
     //////////////////////////////////////////////////
-    BVHactor::~BVHactor() {};
+    BVHactor::~BVHactor()
+    {
+      this->skelAnimation.clear();
+      this->bonePosePub.reset();
+    }
 
     //////////////////////////////////////////////////
     void BVHactor::Load(sdf::ElementPtr _sdf)
@@ -43,7 +58,7 @@ namespace gazebo
 	  // _sdf->GetElement("script")->GetElement("auto_start")->Set(false);
 	}
 
-      Actor::Load(_sdf);
+      this->MeshLoad(_sdf);
 
       /// set a default bvh map
       /// default assumes that bvh nodes and dae nodes have same name and number 
@@ -83,18 +98,277 @@ namespace gazebo
 	    }
 	}
 
-      /// show initial bvh pose if debug is true
-      if (this->doDebug)
-	{
-	  this->SetPose(debugPose, this->world->GetSimTime().Double());
-	}
-
       /// automatic playing of bvh
       if (_sdf->HasElement("auto_start"))
 	{
 	  if (_sdf->Get<std::string>("auto_start") != "__no_auto_start__")
 	    this->StartBVH(_sdf->Get<std::string>("auto_start"));
 	}
+    }
+
+    //////////////////////////////////////////////////
+    void BVHactor::MeshLoad(sdf::ElementPtr _sdf)
+    {
+      sdf::ElementPtr skinSdf = _sdf->GetElement("skin");
+      this->skinFile = skinSdf->Get<std::string>("filename");
+      this->skinScale = skinSdf->Get<double>("scale");
+
+      common::MeshManager::Instance()->Load(this->skinFile);
+      std::string actorName = _sdf->Get<std::string>("name");
+
+      if (!common::MeshManager::Instance()->HasMesh(this->skinFile))
+	return;
+
+      this->mesh = common::MeshManager::Instance()->GetMesh(this->skinFile);
+      if (!this->mesh->HasSkeleton())
+	gzthrow("Collada file does not contain skeletal animation.");
+      this->skeleton = this->mesh->GetSkeleton();
+      this->skeleton->Scale(this->skinScale);
+      /// create the link sdfs for the model
+      common::NodeMap nodes = this->skeleton->GetNodes();
+
+# ifdef HRISYS_HAVE_EIGEN
+      /// create link vertices map
+      std::map<int, std::vector<math::Vector3> > linkVertices;
+      std::map<int, math::Vector3> linkCenter;
+      for (auto iter = nodes.begin(); iter != nodes.end(); ++iter)
+	{
+	  linkVertices[iter->first] = std::vector<math::Vector3>();
+	  linkVertices[iter->first].reserve(this->mesh->GetVertexCount());
+	  linkCenter[iter->first] = math::Vector3(0, 0, 0);
+	}
+      for (unsigned int i = 0; i < this->mesh->GetSubMeshCount(); ++i)
+	{
+	  const common::SubMesh* subMesh = this->mesh->GetSubMesh(i);
+	  for (unsigned int j = 0; j < subMesh->GetNodeAssignmentsCount(); ++j)
+	    {
+	      common::NodeAssignment node = subMesh->GetNodeAssignment(j);
+	      linkVertices[node.nodeIndex].push_back(subMesh->GetVertex(node.vertexIndex));
+	      linkCenter[node.nodeIndex] += subMesh->GetVertex(node.vertexIndex);
+	    }
+	}
+# endif
+
+      sdf::ElementPtr linkSdf;
+      linkSdf = _sdf->GetElement("link");
+      linkSdf->GetAttribute("name")->Set(actorName + "_pose");
+      linkSdf->GetElement("gravity")->Set(false);
+      sdf::ElementPtr linkPose = linkSdf->GetElement("pose");
+
+      sdf::ElementPtr visualSdf = linkSdf->AddElement("visual");
+      visualSdf->GetAttribute("name")->Set(actorName + "_visual");
+      sdf::ElementPtr visualPoseSdf = visualSdf->GetElement("pose");
+      visualPoseSdf->Set(math::Pose());
+      sdf::ElementPtr geomVisSdf = visualSdf->GetElement("geometry");
+      sdf::ElementPtr meshSdf = geomVisSdf->GetElement("mesh");
+      meshSdf->GetElement("uri")->Set(this->skinFile);
+      meshSdf->GetElement("scale")->Set(math::Vector3(this->skinScale,
+						      this->skinScale, this->skinScale));
+
+      std::string actorLinkName = actorName + "::" + actorName + "_pose";
+      this->visualName = actorLinkName + "::" + actorName + "_visual";
+
+      for (auto iter = nodes.begin(); iter != nodes.end(); ++iter)
+	{
+	  common::SkeletonNode* bone = iter->second;
+
+	  linkSdf = _sdf->AddElement("link");
+	  linkSdf->GetAttribute("name")->Set(bone->GetName());
+	  linkSdf->GetElement("gravity")->Set(false);
+	  linkPose = linkSdf->GetElement("pose");
+	  math::Pose pose(bone->GetModelTransform().GetTranslation(),
+			  bone->GetModelTransform().GetRotation());
+	  if (bone->IsRootNode())
+	    pose = math::Pose();
+	  linkPose->Set(pose);
+
+# ifdef HRISYS_HAVE_EIGEN
+	  if (linkVertices[iter->first].size() == 0)
+	    /// link has no vertices
+	    continue;
+
+	  /// calculate linkCenter
+	  linkCenter[iter->first] /= linkVertices[iter->first].size();
+
+	  /// calculate axis direction of bounding cylinder
+	  /// The direction is calculated from mesh instead of link.
+	  /// reason : Meshes have generic structures compared to links.
+	  /// i.e. Meshes do not depend on the number of child links.
+	  Eigen::MatrixXf m(linkVertices[iter->first].size(), 3);
+	  for (unsigned int i = 0; i < linkVertices[iter->first].size(); ++i)
+	    {
+	      math::Vector3 vec = linkVertices[iter->first][i];
+	      m(i, 0) = vec.x - linkCenter[iter->first].x;
+	      m(i, 1) = vec.y - linkCenter[iter->first].y;
+	      m(i, 2) = vec.z - linkCenter[iter->first].z;
+	    }
+	  Eigen::JacobiSVD<Eigen::MatrixXf> svd(m.transpose() * m,
+						Eigen::ComputeThinU | Eigen::ComputeThinV);
+	  Eigen::ArrayXf axis = svd.matrixU().col(0);
+	  auto axisV3 = math::Vector3(axis(0), axis(1), axis(2));
+	  axisV3 = axisV3.Normalize();
+
+	  /// calculate radius and length of bounding cylinder
+	  double maxDistance = 0.0;
+	  double averageDistance = 0.0;
+	  double mostPositivePoint = 0.0;
+	  double mostNegativePoint = 0.0;
+	  for (unsigned int i = 0; i < linkVertices[iter->first].size(); ++i)
+	    {
+	      math::Vector3 center2Vertex =
+		linkCenter[iter->first] - linkVertices[iter->first][i];
+	      double distance =
+		axisV3.Cross(center2Vertex).GetLength();
+	      if (distance > maxDistance)
+		maxDistance = distance;
+	      averageDistance += distance;
+	      double point =
+		center2Vertex.Dot(axisV3);
+	      if (point > mostPositivePoint)
+		mostPositivePoint = point;
+	      else if (point < mostNegativePoint)
+		mostNegativePoint = point;
+	    }
+
+	  averageDistance *= this->skinScale / linkVertices[iter->first].size();
+	  maxDistance *= this->skinScale;
+	  double length = (mostPositivePoint - mostNegativePoint) * this->skinScale;
+
+	  /// calculate direction of cylinder to link coordinate
+	  math::Vector3 cylinderCenterInLink =
+	    bone->GetModelTransform().Inverse().GetRotation()
+	    * (linkCenter[iter->first] * this->skinScale
+	       - bone->GetModelTransform().GetTranslation());
+	  math::Vector3 n =
+	    (bone->GetModelTransform().Inverse().GetRotation() * math::Vector3(1, 0, 0))
+	    .Cross(bone->GetModelTransform().Inverse().GetRotation() * axisV3);
+	  math::Quaternion cylinderPoseInLink(n, asin(n.GetLength()));
+
+	  /// add sphere collision
+	  sdf::ElementPtr collisionSdf2 = linkSdf->GetElement("collision");
+	  collisionSdf2->GetAttribute("name")->Set(bone->GetName() + "_collision_joint");
+	  collisionSdf2->GetElement("pose")->Set(math::Pose());
+	  sdf::ElementPtr geomColSdf2 = collisionSdf2->GetElement("geometry");
+	  sdf::ElementPtr sphColSdf = geomColSdf2->GetElement("sphere");
+	  sphColSdf->GetElement("radius")->Set(maxDistance);
+
+	  if (maxDistance > 2.1 * averageDistance)
+	    /// cylinder does not fit well to model
+	    continue;
+
+	  /// add cylinder collision
+	  sdf::ElementPtr collisionSdf1 = linkSdf->AddElement("collision");
+	  collisionSdf1->GetAttribute("name")->Set(bone->GetName() + "_collision");
+	  collisionSdf1->GetElement("pose")
+	    ->Set(math::Pose(cylinderCenterInLink, cylinderPoseInLink));
+	  sdf::ElementPtr geomColSdf1 = collisionSdf1->GetElement("geometry");
+	  sdf::ElementPtr cylColSdf = geomColSdf1->GetElement("cylinder");
+	  cylColSdf->GetElement("radius")->Set(maxDistance);
+	  cylColSdf->GetElement("length")->Set(length);
+# endif
+	}
+
+      sdf::ElementPtr animSdf = _sdf->GetElement("animation");
+
+      while (animSdf)
+	{
+	  this->LoadAnimation(animSdf);
+	  animSdf = animSdf->GetNextElement("animation");
+	}
+
+      /// we are ready to load the links
+      Model::Load(_sdf);
+      LinkPtr actorLinkPtr = Model::GetLink(actorLinkName);
+      if (actorLinkPtr)
+	{
+	  msgs::Visual actorVisualMsg = actorLinkPtr->GetVisualMessage(this->visualName);
+	  if (actorVisualMsg.has_id())
+	    this->visualId = actorVisualMsg.id();
+	  else
+	    gzerr << "No actor visual message found.";
+	}
+      else
+	{
+	  gzerr << "No actor link found.";
+	}
+
+      this->bonePosePub =
+	this->node->Advertise<msgs::PoseAnimation>("~/skeleton_pose/info", 10);
+    }
+
+    //////////////////////////////////////////////////
+    void BVHactor::LoadAnimation(sdf::ElementPtr _sdf)
+    {
+      std::string animName = _sdf->Get<std::string>("name");
+
+      if (animName == "__default__")
+	{
+	  this->skelAnimation[this->skinFile] =
+	    this->skeleton->GetAnimation(0);
+	  return;
+	}
+
+      std::string animFile = _sdf->Get<std::string>("filename");
+      std::string extension = animFile.substr(animFile.rfind(".") + 1,
+						  animFile.size());
+      double animScale = _sdf->Get<double>("scale");
+      common::Skeleton *skel = NULL;
+
+      if (extension == "dae")
+	{
+	  common::MeshManager::Instance()->Load(animFile);
+	  const common::Mesh *animMesh = NULL;
+	  if (common::MeshManager::Instance()->HasMesh(animFile))
+	    animMesh = common::MeshManager::Instance()->GetMesh(animFile);
+	  if (animMesh && animMesh->HasSkeleton())
+	    {
+	      skel = animMesh->GetSkeleton();
+	      skel->Scale(animScale);
+	    }
+	}
+
+      if (!skel || skel->GetNumAnimations() == 0)
+	{
+	  gzerr << "Failed to load animation.";
+	  return;
+	}
+
+      bool compatible = true;
+      std::map<std::string, std::string> skelMap;
+
+      if (this->skeleton->GetNumNodes() != skel->GetNumNodes())
+	return;
+
+      for (unsigned int i = 0; i < this->skeleton->GetNumNodes(); ++i)
+	{
+	  common::SkeletonNode *skinNode = this->skeleton->GetNodeByHandle(i);
+	  common::SkeletonNode *animNode = skel->GetNodeByHandle(i);
+	  if (animNode->GetChildCount() != skinNode->GetChildCount())
+	    {
+	      compatible = false;
+	      break;
+	    }
+	  else
+	    {
+	      animNode->SetName(skinNode->GetName());
+	    }
+	}
+
+      if (!compatible)
+	{
+	  gzerr << "Skin and animation " << animName <<
+	    " skeletons are not compatible.\n";
+	}
+      else
+	{
+	  this->skelAnimation[animName] = skel->GetAnimation(0);
+	}
+    }
+
+    //////////////////////////////////////////////////
+    void BVHactor::Fini()
+    {
+      Model::Fini();
     }
 
     //////////////////////////////////////////////////
@@ -109,8 +383,8 @@ namespace gazebo
       	  return;
       	}
 
-      bvhfileOnPlay = bvhfile;
-      this->scriptLength = this->skelAnimation[bvhfileOnPlay]->GetLength();
+      this->bvhfileOnPlay = bvhfile;
+      this->scriptLength = this->skelAnimation[this->bvhfileOnPlay]->GetLength();
       this->active = true;
       this->playStartTime = this->world->GetSimTime();
       this->lastScriptTime = std::numeric_limits<double>::max();
@@ -304,7 +578,8 @@ namespace gazebo
 		  if (bvhOffset.GetLength() == 0.0)
 		    zeroTranslationNodeCount += 1;
 		  else
-		    autoScale += static_cast<double>(daeOffset.GetLength()) / bvhOffset.GetLength();
+		    autoScale +=
+		      static_cast<double>(daeOffset.GetLength()) / bvhOffset.GetLength();
 		}
 	    }
 	}
@@ -312,7 +587,7 @@ namespace gazebo
       /// calculate scale for root translation
       if (nodes.size() == zeroTranslationNodeCount)
 	{
-	  std::cerr << "This is unusual bone structure. All bones have zero length!" << "\n";
+	  std::cerr << "This is unusual bone structure. All bones have zero length!\n";
 	  autoScale = 1.0;
 	}
       else
@@ -325,7 +600,7 @@ namespace gazebo
 
       /// calculate translationAligner : aligner of initial bvh pose to initial dae pose
       std::map<std::string, math::Matrix4> translationAligner;
-      for (unsigned int i = 0; i < nodes.size(); i++)
+      for (unsigned int i = 0; i < nodes.size(); ++i)
       	{
       	  common::SkeletonNode *node = nodes[i];
 
@@ -358,8 +633,8 @@ namespace gazebo
       	  if (node->GetName() == this->skeleton->GetRootNode()->GetName())
       	    {
       	      /// if this is root, then some setup is needed to match bvh and dae
-      	      translationAligner[node->GetName()]
-      		= this->skeleton->GetRootNode()->GetTransform().GetRotation().GetAsMatrix4();
+	      translationAligner[node->GetName()] =
+		this->skeleton->GetRootNode()->GetTransform().GetRotation().GetAsMatrix4();
 	      
       	      math::Matrix4 tmp = translationAligner[node->GetName()];
       	      tmp.SetTranslate(node->GetTransform().GetTranslation());
@@ -374,24 +649,28 @@ namespace gazebo
       	  /// else, which means link i only has a single child link i+1
 
       	  /// get link i+1 posture direction in world coordinates
-      	  math::Vector3 relativeBVH = node->GetChild(0)->GetModelTransform().GetTranslation()
+	  math::Vector3 relativeBVH =
+	    node->GetChild(0)->GetModelTransform().GetTranslation()
       	    - node->GetModelTransform().GetTranslation();
-      	  math::Vector3 relativeDAE
-      	    = this->skeleton->GetNodeByName(node->GetName())->GetChild(0)
+	  math::Vector3 relativeDAE =
+	    this->skeleton->GetNodeByName(node->GetName())->GetChild(0)
 	    ->GetModelTransform().GetTranslation()
-      	    - this->skeleton->GetNodeByName(node->GetName())->GetModelTransform().GetTranslation();
+	    - this->skeleton->GetNodeByName(node->GetName())
+	    ->GetModelTransform().GetTranslation();
 
       	  if (relativeBVH == math::Vector3(0, 0, 0)
       	      || relativeDAE == math::Vector3(0, 0, 0))
       	    {
       	      /// unexpected
-      	      std::cerr << "Duplicated joint found! This might cause some errors!" << std::endl;
+	      std::cerr << "Duplicated joint found! This might cause some errors!\n";
       	      continue;
       	    }
 
-      	  /// calculate world coordinate rotation quaternion (difference between link i+1 posture)
+	  /// calculate world coordinate rotation quaternion
+	  /// (difference between link i+1 posture)
       	  math::Vector3 n = relativeBVH.Cross(relativeDAE);
-      	  double theta = asin(n.GetLength() / (relativeDAE.GetLength() * relativeBVH.GetLength()));
+	  double theta =
+	    asin(n.GetLength() / (relativeDAE.GetLength() * relativeBVH.GetLength()));
 
       	  /// calculate bvh to dae of link i+1
       	  translationAligner[node->GetChild(0)->GetName()]
@@ -400,8 +679,10 @@ namespace gazebo
       	    * math::Quaternion(n.Normalize(), theta).GetAsMatrix4()
       	    * node->GetModelTransform().GetRotation().GetAsMatrix4();
 
-      	  /// fix bvh posture of all links until link i, so that bvh and dae world posture matches
-      	  math::Matrix4 tmp = node->GetModelTransform().GetRotation().GetAsMatrix4().Inverse()
+	  /// fix bvh posture of all links until link i,
+	  /// so that bvh and dae world posture matches
+	  math::Matrix4 tmp =
+	    node->GetModelTransform().GetRotation().GetAsMatrix4().Inverse()
       	    * math::Quaternion(n.Normalize(), theta).GetAsMatrix4()
       	    * node->GetModelTransform().GetRotation().GetAsMatrix4();
       	  tmp.SetTranslate(node->GetTransform().GetTranslation());
@@ -412,7 +693,7 @@ namespace gazebo
       /// now, bvh and dae should have the same world posture
       /// calculate the rotationAligner : aligner of initial bvh pose to initial dae pose
       std::map<std::string, math::Matrix4> rotationAligner;
-      for (unsigned int i = 0; i < nodes.size(); i++)
+      for (unsigned int i = 0; i < nodes.size(); ++i)
 	{
       	  common::SkeletonNode *node = nodes[i];
 
@@ -430,40 +711,9 @@ namespace gazebo
 	  rotationAligner[node->GetName()]
 	    = node->GetTransform().GetRotation().GetAsMatrix4().Inverse()
 	    * translationAligner[node->GetName()].Inverse()
-	    * this->skeleton->GetNodeByName(node->GetName())->GetTransform().GetRotation().GetAsMatrix4();
+	    * this->skeleton->GetNodeByName(node->GetName())
+	    ->GetTransform().GetRotation().GetAsMatrix4();
 	}
-
-
-      /// if sdf requests debug
-      if (_debug)
-	{
-	  std::cout << "/////////////////////////////////////////" << std::endl;
-	  std::cout << "Showing debug: " << _filename << std::endl << std::endl;
-
-	  for (unsigned int i = 0; i < nodes.size(); i++)
-	    {
-	      common::SkeletonNode *node = nodes[i];
-	      math::Matrix4 transform(math::Matrix4::IDENTITY);
-	      transform.SetTranslate(node->GetTransform().GetTranslation());
-	      transform
-		= translationAligner[node->GetName()] * transform * rotationAligner[node->GetName()];
-	      std::cout << node->GetName() << std::endl;
-	      std::cout << "position align matrix" << std::endl;
-	      std::cout << translationAligner[node->GetName()];
-	      std::cout << "rotation align matrix" << std::endl;
-	      std::cout << rotationAligner[node->GetName()];
-	      std::cout << "dae" << std::endl;
-	      std::cout << this->skeleton->GetNodeByName(node->GetName())->GetTransform();
-	      std::cout << "bvh" << std::endl;
-	      std::cout << transform << std::endl;	      
-	      this->debugPose[node->GetName()] = transform;
-	  }
-
-	  this->doDebug = true;
-	  std::cout << "/////////////////////////////////////////" << std::endl;
-	}
-
-
 
       /// from here get animation      
       getline(file, line);
@@ -521,7 +771,7 @@ namespace gazebo
 	  /// parse data of nth frame
 	  /// cursor points to xth data value in line
 	  unsigned int cursor = 0;
-	  for (unsigned int i = 0; i < nodes.size(); i++)
+	  for (unsigned int i = 0; i < nodes.size(); ++i)
 	    {
 	      common::SkeletonNode *node = nodes[i];
 
@@ -578,8 +828,9 @@ namespace gazebo
 		}
 
 	      transform.SetTranslate(translation);
-	      transform
-		= translationAligner[node->GetName()] * transform * rotationAligner[node->GetName()];
+	      transform =
+		translationAligner[node->GetName()]
+		* transform * rotationAligner[node->GetName()];
 
 	      /// add this transformation matrix for node i for nth frame
 	      animation->AddKeyFrame(node->GetName(), time, transform);
@@ -614,7 +865,6 @@ namespace gazebo
 					      animFile.size());
       double animScale = _sdf->Get<double>("scale");
       std::string animMap = _sdf->Get<std::string>("map");
-      bool animDebug = _sdf->Get<bool>("debug");
 
       common::Skeleton *skel = NULL;
 
@@ -628,7 +878,7 @@ namespace gazebo
 	  else
 	    skelMap = skelNodesMap[animMap];
 
-	  skel = this->LoadBVH(animFile, skelMap, animScale, animDebug);
+	  skel = this->LoadBVH(animFile, skelMap, animScale);
 	}
       else
 	{
@@ -641,20 +891,12 @@ namespace gazebo
 	  return;
 	}
 
-
       this->skelAnimation[animName] = skel->GetAnimation(0);
-      this->interpolateX[animName] = _sdf->Get<bool>("interpolate_x");
     }
 
     //////////////////////////////////////////////////
     void BVHactor::Update()
     {
-      if (this->autoStart)
-	{
-	  Actor::Update();
-	  return;
-	}
-
       if (!this->active)
 	return;
 
@@ -691,7 +933,7 @@ namespace gazebo
       /// at this point we are certain that a new frame will be animated
       this->prevFrameTime = currentTime;
 
-      common::SkeletonAnimation *skelAnim = this->skelAnimation[bvhfileOnPlay];
+      common::SkeletonAnimation *skelAnim = this->skelAnimation[this->bvhfileOnPlay];
       std::map<std::string, math::Matrix4> frame;
       frame = skelAnim->GetPoseAt(scriptTime);
 
@@ -722,7 +964,7 @@ namespace gazebo
       math::Matrix4 modelTrans(math::Matrix4::IDENTITY);
       math::Pose mainLinkPose;
 
-      for (unsigned int i = 0; i < this->skeleton->GetNumNodes(); i++)
+      for (unsigned int i = 0; i < this->skeleton->GetNumNodes(); ++i)
 	{
 	  common::SkeletonNode *bone = this->skeleton->GetNodeByHandle(i);
 	  common::SkeletonNode *parentBone = bone->GetParent();
@@ -785,6 +1027,5 @@ namespace gazebo
 	this->bonePosePub->Publish(msg);
       this->SetWorldPose(mainLinkPose, true, false);
     }
-
   }
 }

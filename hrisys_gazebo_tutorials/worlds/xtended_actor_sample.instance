@@ -40,6 +40,37 @@
     <pair dae="RThumb" bvh="RThumb"/>
   </bvh_map>
 
+  <bvh_map name="mapOpenNI">
+    <pair dae="Hips" bvh="ROOT"/>
+    <pair dae="LHipJoint" bvh="VIRTUAL_LEFT_HIP"/>
+    <pair dae="LeftUpLeg" bvh="LEFT_HIP"/>
+    <pair dae="LeftLeg" bvh="LEFT_KNEE"/>
+    <pair dae="LeftFoot" bvh="LEFT_FOOT"/>
+    <pair dae="RHipJoint" bvh="VIRTUAL_RIGHT_HIP"/>
+    <pair dae="RightUpLeg" bvh="RIGHT_HIP"/>
+    <pair dae="RightLeg" bvh="RIGHT_KNEE"/>
+    <pair dae="RightFoot" bvh="RIGHT_FOOT"/>
+    <pair dae="LowerBack" bvh="TORSO"/>
+    <pair dae="Spine1" bvh="CHEST"/>
+    <pair dae="Neck" bvh="VIRTUAL_NECK"/>
+    <pair dae="Neck1" bvh="NECK"/>
+    <pair dae="Head" bvh="HEAD"/>
+    <pair dae="LeftShoulder" bvh="VIRTUAL_LEFT_SHOULDER"/>
+    <pair dae="LeftArm" bvh="LEFT_SHOULDER"/>
+    <pair dae="LeftForeArm" bvh="LEFT_ELBOW"/>
+    <pair dae="LeftHand" bvh="LEFT_HAND"/>
+    <pair dae="RightShoulder" bvh="VIRTUAL_RIGHT_SHOULDER"/>
+    <pair dae="RightArm" bvh="RIGHT_SHOULDER"/>
+    <pair dae="RightForeArm" bvh="RIGHT_ELBOW"/>
+    <pair dae="RightHand" bvh="RIGHT_HAND"/>
+  </bvh_map>
+
+  <animation name="walking">
+    <filename>walk.dae</filename>
+    <scale>1.0</scale>
+    <interpolate_x>true</interpolate_x>
+  </animation>
+
   <bvh_animation name="01_01">
     <filename><!--write here--></filename>
     <interpolate_x>false</interpolate_x>

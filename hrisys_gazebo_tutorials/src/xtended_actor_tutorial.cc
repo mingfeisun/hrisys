@@ -5,6 +5,8 @@
 #include "bvhactor.hh"
 #include "LimbXtentions.hh"
 #include "xtends/XBvhLimb.hh"
+#include "xtends/XTrackerLimb.hh"
+#include "xtends/XWalkerLimb.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo
@@ -59,8 +61,23 @@ namespace gazebo
       	      if (xtentionType == "bvh")
       		{
       		  this->xtentions["bvh"].reset(new physics::XBvhLimb(_world));
-      		  this->xtentions["bvh"]->InitLimbX(xtendedSdf);
       		}
+#ifdef HRISYS_HAVE_OPENNI
+	      else if (xtentionType == "nite")
+		{
+		  this->xtentions["nite"].reset(new physics::XTrackerLimb(_world));
+		}
+#endif
+	      else if (xtentionType == "walker")
+		{
+		  this->xtentions["walker"].reset(new physics::XWalkerLimb(_world));
+		}
+	      else
+		{
+		  xtendedSdf = xtendedSdf->GetNextElement("xtend");
+		  continue;
+		}
+	      this->xtentions[xtentionType]->InitLimbX(xtendedSdf);
       	      xtendedSdf = xtendedSdf->GetNextElement("xtend");
       	    }
       	}
@@ -72,13 +89,15 @@ namespace gazebo
       	  while (startSdf)
       	    {
       	      std::string xtentionType = startSdf->Get<std::string>("type");
-      	      if (xtentionType == "bvh")
-      		this->xtentions["bvh"]
-      		  ->StartLimbX(this->model,
-      			       startSdf->Get<std::string>("limb").c_str(),
-      			       startSdf->Get<std::string>("file").c_str(),
-      			       startSdf->Get<bool>("loop"));
-      	      startSdf = startSdf->GetNextElement("start");
+	      if (xtentions.find(xtentionType) == xtentions.end())
+		{
+		  startSdf = startSdf->GetNextElement("start");
+		  continue;
+		}
+	      this->xtentions[xtentionType]
+		->StartLimbX(this->model, startSdf->Get<std::string>("limb"),
+			     startSdf->Get<std::string>("arg"));
+	      startSdf = startSdf->GetNextElement("start");
       	    }
       	}
     }

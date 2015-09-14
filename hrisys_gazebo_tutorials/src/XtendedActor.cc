@@ -71,7 +71,7 @@ namespace gazebo
       for (std::map<std::string, std::vector<std::string> >::iterator iter=
 	     limbNodeList.begin(); iter != limbNodeList.end(); ++iter)
 	xNull->StartLimbX(boost::static_pointer_cast<XtendedActor>(shared_from_this()),
-			  iter->first);
+			  iter->first, "");
 
       /// set when xtended actor is not an ordinary bvh player
       if (bvhfileOnPlay == "")
@@ -86,12 +86,6 @@ namespace gazebo
     //////////////////////////////////////////////////
     void XtendedActor::Update()
     {
-      if (this->autoStart)
-	{
-	  Actor::Update();
-	  return;
-	}
-
       if (this->bvhfileOnPlay != "")
 	{
 	  BVHactor::Update();
@@ -160,6 +154,16 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
+    std::map<std::string, std::string> XtendedActor::GetSkelMap(std::string _mapName) const
+    {
+      std::map<std::string, std::map<std::string, std::string> >::const_iterator iter
+	= this->skelNodesMap.find(_mapName);
+      if (iter == this->skelNodesMap.end())
+	return std::map<std::string, std::string>();
+      return iter->second;
+    }
+
+    //////////////////////////////////////////////////
     bool XtendedActor::SetNodeTransform(std::string _node, math::Matrix4 _pose)
     {
       if (poseAtNow.find(_node) == poseAtNow.end())
@@ -196,7 +200,8 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
-    void XNullLimb::StartLimbX(XtendedActorPtr _actor, std::string _limb, ...)
+    void XNullLimb::StartLimbX(XtendedActorPtr _actor,
+			       std::string _limb, std::string _arg)
     {
       if (_actor->SetLimbMotion(_limb, [=](XtendedActorPtr _a, std::string _s)
 				{return this->UpdateLimbX(_a, _s);}) == false)

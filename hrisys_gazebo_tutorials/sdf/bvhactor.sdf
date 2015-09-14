@@ -127,6 +127,16 @@
       </element> <!-- End Waypoint -->
     </element> <!-- End Action -->
   </element> <!-- End Script -->
+
+  <element name="add_audio_to_link" required="*">
+    <description></description>
+    <element name="link" type="string" default="__default__" required="1">
+      <description></description>
+    </element>
+
+    <include filename="audio_sink.sdf" required="*"/>
+    <include filename="audio_source.sdf" required="*"/>
+  </element> <!-- End Add Audio To Link -->
   
   <include filename="link.sdf" required="+"/>
   <include filename="joint.sdf" required="*"/>

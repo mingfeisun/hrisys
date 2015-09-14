@@ -25,7 +25,8 @@ namespace gazebo
     public: void InitLimbX(sdf::ElementPtr _sdf);
 
       /// \brief StartLimbX function.
-    public: void StartLimbX(XtendedActorPtr _actor, std::string _limb, ...);
+    public: void StartLimbX(XtendedActorPtr _actor,
+			    std::string _limb, std::string _arg);
 
       /// \brief UpdateLimbX function. Apply no motion to nodes in limb.
       /// \param[in] _actor Pointer to Xtended Actor for setting node poses.
@@ -64,6 +65,8 @@ namespace gazebo
     public: common::SkeletonAnimation* GetSkelAnimationData(std::string _bvhfile) const;
 
     public: common::Skeleton* GetSkeletonData() const;
+
+    public: std::map<std::string, std::string> GetSkelMap(std::string _mapName) const;
 
       /// \brief Set pose of node.
       /// Used in UpdateLimbX functions. Public for UpdateLimbX extention.
