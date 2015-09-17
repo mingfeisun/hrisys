@@ -2,6 +2,11 @@
 #include <gazebo/gazebo.hh>
 
 #include "gazebo/physics/World.hh"
+#include "gazebo/physics/Link.hh"
+
+#include "gazebo/transport/Node.hh"
+#include "gazebo/transport/Publisher.hh"
+#include "gazebo/msgs/msgs.hh"
 
 #include "../XtendedActor.hh"
 #include "../LimbXtentions.hh"
@@ -21,7 +26,8 @@ namespace gazebo
     //////////////////////////////////////////////////
     KeyBoardWalkerTrigger::KeyBoardWalkerTrigger() : ActionTrigger()
     {
-      this->value = math::Vector3(0, 0, 0);
+      this->value.pos = math::Vector3(0, 0, 0);
+      this->value.resetCamera = false;
     }
 
     //////////////////////////////////////////////////
@@ -32,6 +38,8 @@ namespace gazebo
     //////////////////////////////////////////////////
     void KeyBoardWalkerTrigger::TriggerProcess()
     {
+      this->value.resetCamera = false;
+
       static struct termios oldt, newt;
       tcgetattr(STDIN_FILENO, &oldt);
       newt = oldt;
@@ -55,10 +63,16 @@ namespace gazebo
 	  return;
 	}
 
-      if (c == 'a') this->value = math::Vector3(0.0, 0.1, 0.0);
-      if (c == 'd') this->value = math::Vector3(0.0, -0.1, 0.0);
-      if (c == 's') this->value = math::Vector3(-0.1, 0.0, 0.0);
-      if (c == 'w') this->value = math::Vector3(0.1, 0.0, 0.0);
+      if (c == 'a') this->value.pos = math::Vector3(0.0, 0.1, 0.0);
+      if (c == 'd') this->value.pos = math::Vector3(0.0, -0.1, 0.0);
+      if (c == 's') this->value.pos = math::Vector3(-0.1, 0.0, 0.0);
+      if (c == 'w') this->value.pos = math::Vector3(0.1, 0.0, 0.0);
+
+      if (c == 'f')
+	{
+	  this->value.resetCamera = true;
+	  return;
+	}
 
       if ((this->state == TriggerState::T_OFF) ||
 	  (this->state == TriggerState::T_RELEASE))
@@ -75,7 +89,9 @@ namespace gazebo
     {
       this->moveX = 0.0;
       this->moveY = 0.0;
-      this->value = math::Vector3(0, 0, 0);
+      this->zCount = 0;
+      this->value.pos = math::Vector3(0, 0, 0);
+      this->value.resetCamera = false;
 
       if (!ros::isInitialized())
 	{
@@ -105,7 +121,7 @@ namespace gazebo
 	  return;
 	}
 
-      this->value = math::Vector3(moveX, moveY, 0.0);
+      this->value.pos = math::Vector3(moveX, moveY, 0.0);
 
       if ((this->state == TriggerState::T_OFF) ||
 	  (this->state == TriggerState::T_RELEASE))
@@ -131,6 +147,17 @@ namespace gazebo
       if (y > 0.8) this->moveY = sgny * 0.1;
       else if (y > 0.2) this->moveY = sgny * y * 0.1;
       else this->moveY = 0.0;
+
+      if (msg->nunchuk_buttons[0] > 0.1 && this->zCount == 0)
+	{
+	  this->value.resetCamera = true;
+	  ++this->zCount;
+	}
+      else
+	{
+	  this->value.resetCamera = false;
+	  this->zCount = 0;
+	}
     }
 # endif
 
@@ -138,6 +165,7 @@ namespace gazebo
     //////////////////////////////////////////////////
     XWalkerLimb::XWalkerLimb(WorldPtr _world) : XBvhLimb(_world)
     {
+      this->cameraEnabled = false;
     }
 
     //////////////////////////////////////////////////
@@ -160,6 +188,40 @@ namespace gazebo
 
       this->paramT = 0.0;
       this->deltaT = 0.0;
+
+      this->globalDirectionFrom = math::Quaternion(0, 0, 0);
+      this->globalDirectionTo = this->globalDirectionFrom;
+      this->globalDirection = this->globalDirectionTo;
+      this->reDirection = 1.0;
+
+      this->theta = [=]()
+	{
+	  math::Vector3 velocity = this->trigger->GetValue().pos;
+	  double theta;
+	  if (fabs(velocity.x) < 0.001)
+	    if (fabs(velocity.y) < 0.001)
+	      theta = 0;
+	    else
+	      theta = (velocity.y / fabs(velocity.y)) * M_PI / 2;
+	  else
+	    theta = atan(velocity.y / velocity.x)
+	      - (velocity.x / fabs(velocity.x) - 1) * M_PI / 2;
+	  return theta;
+	};
+
+      if (_sdf->HasElement("camera"))
+	{
+	  sdf::ElementPtr cameraSdf = _sdf->GetElement("camera");
+	  this->cameraPose = cameraSdf->Get<math::Pose>("pose");
+	  this->node.reset(new transport::Node());
+	  this->node->Init();
+	  this->guiPub = this->node->Advertise<msgs::GUI>("~/gui", 5);
+	  this->guiPub->WaitForConnection();
+	  this->cameraEnabled = true;
+
+	  this->cameraT = 1.0;
+	  this->autoCameraSetCount = 0;
+	}
     }
 
     //////////////////////////////////////////////////
@@ -173,16 +235,21 @@ namespace gazebo
       	    _actor->GetSkeletonData()->GetNodeByHandle(i);
       	  this->frame0[node->GetName()] = node->GetTransform();
       	}
-    }
 
-    //////////////////////////////////////////////////
-    void XWalkerLimb::PassIdleMotion(std::map<std::string, math::Matrix4> _frame)
-    {
-      for (auto iter = _frame.begin(); iter != _frame.end(); ++iter)
+      if (this->cameraEnabled)
 	{
-	  auto it = this->frame0.find(iter->first);
-	  if (it != this->frame0.end())
-	    it->second = iter->second;
+	  math::Pose pose =
+	    _actor->GetChildLink(_actor->GetSkeletonData()->GetRootNode()
+				 ->GetName())->GetWorldCoGPose();
+	  this->cameraPose += math::Pose(0, 0, pose.pos.z, 0, 0, 0);
+	  this->cameraPoseIni = this->cameraPose;
+	  pose = this->cameraPose + math::Pose(pose.pos.x, 0, 0, 0, 0, 0);
+	  msgs::GUI result;
+	  msgs::GUICamera *guiCam = result.mutable_camera();
+	  guiCam->set_name("user_camera");
+	  guiCam->set_view_controller("orbit");
+	  msgs::Set(guiCam->mutable_pose(), pose);
+	  this->guiPub->Publish(result);
 	}
     }
 
@@ -193,9 +260,14 @@ namespace gazebo
       this->trigger->TriggerProcess();
 
       if (this->trigger->GetTriggerState() == TriggerState::T_FIRE)
+	{
 	  this->deltaT = 0.05;
+	  this->moveDistance = 0.0;
+	}
       else if (this->trigger->GetTriggerState() == TriggerState::T_OFF)
+	{
 	  this->deltaT = -0.05;
+	}
 
       this->paramT += this->deltaT;
 
@@ -204,27 +276,11 @@ namespace gazebo
       else if (this->paramT > 0.95)
 	this->paramT = 1.0;
       
-      this->moveDistance += this->paramT * this->trigger->GetValue();
+      math::Vector3 deltaD =
+	this->paramT * (this->globalDirection * this->trigger->GetValue().pos);
 
-      common::Time currentTime = this->world->GetSimTime();
-      XLimbAnimeManager limbAnimeManager = this->animeManager[_limb];
-
-      this->animeManager[_limb].prevFrameTime = currentTime;
-
-      double scriptTime = currentTime.Double()
-	- limbAnimeManager.startDelay
-	- limbAnimeManager.playStartTime.Double();
-
-      /// waiting for delayed start
-      if (scriptTime < 0)
-	return;
-
-      if (scriptTime >= limbAnimeManager.scriptLength)
-	{
-	  scriptTime = scriptTime - limbAnimeManager.scriptLength;
-	  this->animeManager[_limb].playStartTime =
-	    currentTime - scriptTime;
-	}
+      this->moveDistance += deltaD;
+      this->globalPosition += deltaD;
 
       /// get node posture
       std::map<std::string, math::Matrix4> frame;
@@ -234,43 +290,59 @@ namespace gazebo
 
       /// the limb should include the root
       if (find(limbnodelist.begin(), limbnodelist.end(),
-	       _actor->GetSkeletonData()->GetRootNode()->GetName()) !=
+	       _actor->GetSkeletonData()->GetRootNode()->GetName()) ==
 	  limbnodelist.end())
-	{
-	  frame = limbAnimeManager.skelAnim->
-	    GetPoseAtX(this->moveDistance.GetLength(),
-		       _actor->GetSkeletonData()->GetRootNode()->GetName());
-	  math::Matrix4 rootTrans =
-	    frame[_actor->GetSkeletonData()->GetRootNode()->GetName()];
-	  math::Vector3 rootPos = rootTrans.GetTranslation();
-	  math::Quaternion rootRot = rootTrans.GetRotation();
-	  math::Pose modelPose;
-	  math::Pose actorPose;
-	  actorPose.pos = modelPose.pos + modelPose.rot.RotateVector(rootPos);
-	  actorPose.rot = modelPose.rot * rootRot;
-	  math::Vector3 velocity = this->trigger->GetValue();
-	  double theta;
-	  if (fabs(velocity.x) < 0.001)
-	    if (fabs(velocity.y) < 0.001)
-	      theta = 0;
-	    else
-	      theta = (velocity.y / fabs(velocity.y)) * M_PI / 2;
-	  else
-	    theta = atan(velocity.y / velocity.x);
-	  math::Quaternion direction(math::Vector3(0, 0, 1), theta);
-	  actorPose.rot = direction * actorPose.rot;
-	  math::Matrix4 rootM(actorPose.rot.GetAsMatrix4());
-	  rootM.SetTranslate(math::Vector3(this->moveDistance.x,
-					   this->moveDistance.y,
-					   actorPose.pos.z));
-	  frame[_actor->GetSkeletonData()->GetRootNode()->GetName()] = rootM;
-	}
-      else
 	{
 	  std::cerr << "Error! XWalker must include root! \n";
 	  this->FinishLimbX(_actor, _limb);
 	  return;
 	}
+
+      XLimbAnimeManager limbAnimeManager = this->animeManager[_limb];
+
+      frame = limbAnimeManager.skelAnim->
+	GetPoseAtX(this->moveDistance.GetLength(),
+		   _actor->GetSkeletonData()->GetRootNode()->GetName());
+      math::Matrix4 rootTrans =
+	frame[_actor->GetSkeletonData()->GetRootNode()->GetName()];
+      math::Vector3 rootPos = rootTrans.GetTranslation();
+      math::Quaternion rootRot = rootTrans.GetRotation();
+      math::Pose modelPose;
+      math::Pose actorPose;
+      actorPose.pos = modelPose.pos + modelPose.rot.RotateVector(rootPos);
+      actorPose.rot = modelPose.rot * rootRot;
+
+      /// when model is moving
+      if (this->trigger->GetTriggerState() == TriggerState::T_FIRE ||
+	  this->trigger->GetTriggerState() == TriggerState::T_ON)
+	{
+	  /// when interrupted during camera view change
+	  if (this->reDirection > 0.99 && this->cameraT < 1)
+	    {
+	      this->globalDirectionTo = this->globalDirection;
+	      this->cameraT = 1.0;
+	    }
+
+	  this->direction =
+	    this->globalDirection * math::Quaternion(math::Vector3(0, 0, 1),
+						     this->theta());
+	}
+      /// when change view is triggered
+      else if (this->reDirection < 0)
+	{
+	  this->reDirection = 1.0;
+	  double theta = this->theta();
+	  if (fabs(theta) < M_PI / 2)
+	    this->direction =
+	      this->globalDirection * math::Quaternion(math::Vector3(0, 0, 1), theta);
+	}
+
+      actorPose.rot = this->direction * actorPose.rot;
+      math::Matrix4 rootM(actorPose.rot.GetAsMatrix4());
+      rootM.SetTranslate(math::Vector3(this->globalPosition.x,
+				       this->globalPosition.y,
+				       actorPose.pos.z));
+      frame[_actor->GetSkeletonData()->GetRootNode()->GetName()] = rootM;
 
       /// set node posture
       for (int i = 0; i < limbnodelist.size(); ++i)
@@ -289,7 +361,60 @@ namespace gazebo
 	  _actor->SetNodeTransform(limbnodelist[i], slerpFrame);
 	}
 
-      this->animeManager[_limb].lastScriptTime = scriptTime;
+      /// handle camera view
+      if (this->cameraEnabled)
+	{
+	  if (this->trigger->GetTriggerState() == TriggerState::T_OFF)
+	    ++this->autoCameraSetCount;
+	  /// when model is moving
+	  else
+	    this->autoCameraSetCount = 0;
+
+	  /// camera view change is triggered
+	  if (this->trigger->GetValue().resetCamera)
+	    {
+	      this->globalDirectionFrom = this->globalDirectionTo;
+	      this->globalDirectionTo = this->direction;
+	      this->cameraT = 0.0;
+	      this->deltaCameraT = 0.2;
+	      this->autoCameraSetCount = -20;
+	      this->reDirection = 1.0;
+	    }
+	  /// after model stops moving
+	  else if (this->autoCameraSetCount == 10)
+	    {
+	      this->globalDirectionFrom = this->globalDirectionTo;
+	      this->globalDirectionTo = this->direction;
+	      this->cameraT = 0.0;
+	      this->deltaCameraT = 0.2;
+	      this->reDirection = 100.0; /// do not reDirection
+	    }
+
+	  /// calculate camera view
+	  if (this->cameraT < 1)
+	    {
+	      this->cameraT += this->deltaCameraT;
+	      this->globalDirection =
+		math::Quaternion::Slerp(this->cameraT,
+					this->globalDirectionFrom,
+					this->globalDirectionTo);
+	      this->cameraPose =
+		math::Pose(this->globalDirection * this->cameraPoseIni.pos,
+			   this->globalDirection);
+	      this->reDirection -= this->cameraT;
+	    }
+
+	  /// change camera view
+	  math::Pose pose =
+	    this->cameraPose + math::Pose(this->globalPosition.x,
+					  this->globalPosition.y, 0, 0, 0, 0);
+	  msgs::GUI result;
+	  msgs::GUICamera *guiCam = result.mutable_camera();
+	  guiCam->set_name("user_camera");
+	  guiCam->set_view_controller("orbit");
+	  msgs::Set(guiCam->mutable_pose(), pose);
+	  this->guiPub->Publish(result);
+	}
     }
 
     //////////////////////////////////////////////////
