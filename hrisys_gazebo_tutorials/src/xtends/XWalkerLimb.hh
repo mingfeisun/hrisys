@@ -24,6 +24,8 @@ namespace gazebo
 
       /// \brief View control flag.
       bool resetCamera;
+
+      bool onTransparent;
     };
 
     class KeyBoardWalkerTrigger : public ActionTrigger<WalkerTrigger>
@@ -110,11 +112,17 @@ namespace gazebo
       /// Non-walks when paramT is 0.0, and walks when 1.0.
     protected: float paramT;
 
-      /// \brief Node that handles communication to camera.
+      /// \brief Node that handles communication with GUI.
     protected: transport::NodePtr node;
 
       /// \brief Publisher to communicate to camera.
     protected: transport::PublisherPtr guiPub;
+
+      /// \brief Publisher to communicate to object visibility.
+    protected: transport::PublisherPtr visPub;
+
+      /// \brief When false, actor is transparent.
+    protected: bool onAppear;
 
       /// \brief Relative pose of camera from model.
     protected: math::Pose cameraPoseIni;
@@ -154,6 +162,34 @@ namespace gazebo
       /// When false, camera is independent (world view).
       /// When true, camera is linked to model (player view).
     protected: bool cameraEnabled;
+
+      /// \brief Hide object region boundary line slope.
+      /// \brief Classifies object boundary point.
+    protected: math::Pose lineAIni;
+
+      /// \brief Hide object region boundary line slope.
+      /// \brief Classifies object boundary point.
+    protected: math::Pose lineBIni;
+
+      /// \brief Hide object region boundary horizon.
+      /// \brief Classifies object bounding box corners.
+    protected: math::Pose lineLIni;
+
+      /// \brief Hide object size threshold.
+    protected: double sizeThreshold;
+
+      /// \brief Object visibility status. Shown or hidden.
+    protected: std::vector<bool> visualized;
+
+      /// \brief Classifies which side of line a point is in.
+      /// \param[in] _l Slope of line.
+      /// \param[in] _p Position of point to classify.
+    protected: inline double OnSide(math::Vector3 _l,
+				    math::Vector3 _p)
+      {
+	return _l.x * _p.y - _l.y * _p.x;
+      };
+
     };
 
     typedef boost::shared_ptr<XWalkerLimb> XWalkerLimbPtr;

@@ -7,6 +7,7 @@
 #include "gazebo/transport/Node.hh"
 #include "gazebo/transport/Publisher.hh"
 #include "gazebo/msgs/msgs.hh"
+#include "gazebo/transport/TransportIface.hh"
 
 #include "../XtendedActor.hh"
 #include "../LimbXtentions.hh"
@@ -39,6 +40,7 @@ namespace gazebo
     void KeyBoardWalkerTrigger::TriggerProcess()
     {
       this->value.resetCamera = false;
+      this->value.onTransparent = false;
 
       static struct termios oldt, newt;
       tcgetattr(STDIN_FILENO, &oldt);
@@ -71,6 +73,11 @@ namespace gazebo
       if (c == 'f')
 	{
 	  this->value.resetCamera = true;
+	  return;
+	}
+      if (c == 'c')
+	{
+	  this->value.onTransparent = true;
 	  return;
 	}
 
@@ -148,7 +155,7 @@ namespace gazebo
       else if (y > 0.2) this->moveY = sgny * y * 0.1;
       else this->moveY = 0.0;
 
-      if (msg->nunchuk_buttons[0] > 0.1 && this->zCount == 0)
+      if (msg->nunchuk_buttons[0] > 0.1 && this->zCount == 0) /// Z button
 	{
 	  this->value.resetCamera = true;
 	  ++this->zCount;
@@ -158,6 +165,9 @@ namespace gazebo
 	  this->value.resetCamera = false;
 	  this->zCount = 0;
 	}
+
+      if (msg->buttons[5]) this->value.onTransparent = true; /// B button
+      else this->value.onTransparent = false;
     }
 # endif
 
@@ -209,15 +219,41 @@ namespace gazebo
 	  return theta;
 	};
 
+      this->node.reset(new transport::Node());
+      this->node->Init();
+      this->visPub = this->node->Advertise<msgs::Visual>("~/visual", 200);
+      this->visPub->WaitForConnection();
+      this->onAppear = true;
+      this->visualized.resize(10, true);
+
       if (_sdf->HasElement("camera"))
 	{
 	  sdf::ElementPtr cameraSdf = _sdf->GetElement("camera");
 	  this->cameraPose = cameraSdf->Get<math::Pose>("pose");
-	  this->node.reset(new transport::Node());
-	  this->node->Init();
 	  this->guiPub = this->node->Advertise<msgs::GUI>("~/gui", 5);
 	  this->guiPub->WaitForConnection();
 	  this->cameraEnabled = true;
+
+	  double width, range;
+	  if (cameraSdf->HasElement("width")) width = cameraSdf->Get<double>("width");
+	  else width = 5.0;
+
+	  if (cameraSdf->HasElement("range")) range = cameraSdf->Get<double>("range");
+	  else range = -0.5;
+
+	  if (cameraSdf->HasElement("sizeThreshold"))
+	    this->sizeThreshold = cameraSdf->Get<double>("sizeThreshold");
+	  else this->sizeThreshold = 1.0;
+
+	  math::Vector3 lA(this->cameraPose.pos.x,
+			   this->cameraPose.pos.y - width/2, 0);
+	  lA = lA.Normalize();
+	  math::Vector3 lB(this->cameraPose.pos.x,
+			   this->cameraPose.pos.y + width/2, 0);
+	  lB = lB.Normalize();
+	  this->lineAIni = math::Pose(lA, this->cameraPose.rot);
+	  this->lineBIni = math::Pose(lB, this->cameraPose.rot);
+	  this->lineLIni = math::Pose(math::Vector3(range, 0, 0), this->cameraPose.rot);
 
 	  this->cameraT = 1.0;
 	  this->autoCameraSetCount = 0;
@@ -361,6 +397,32 @@ namespace gazebo
 	  _actor->SetNodeTransform(limbnodelist[i], slerpFrame);
 	}
 
+      /// handle model transparent
+      if (this->trigger->GetValue().onTransparent)
+	{
+	  if (this->onAppear == true)
+	    {
+	      msgs::Visual visualMsg;
+	      visualMsg.set_name(_actor->GetScopedName());
+	      visualMsg.set_parent_name(_actor->GetParent()->GetScopedName());
+	      visualMsg.set_transparency(0.8);
+	      this->visPub->Publish(visualMsg);
+	      this->onAppear = false;
+	    }
+	}
+      else
+	{
+	  if (this->onAppear == false)
+	    {
+	      msgs::Visual visualMsg;
+	      visualMsg.set_name(_actor->GetScopedName());
+	      visualMsg.set_parent_name(_actor->GetParent()->GetScopedName());
+	      visualMsg.set_transparency(0.0);
+	      this->visPub->Publish(visualMsg);
+	      this->onAppear = true;
+	    }
+	}
+
       /// handle camera view
       if (this->cameraEnabled)
 	{
@@ -386,7 +448,7 @@ namespace gazebo
 	      this->globalDirectionFrom = this->globalDirectionTo;
 	      this->globalDirectionTo = this->direction;
 	      this->cameraT = 0.0;
-	      this->deltaCameraT = 0.2;
+	      this->deltaCameraT = 0.2; /// for keyboard control try 0.01
 	      this->reDirection = 100.0; /// do not reDirection
 	    }
 
@@ -402,6 +464,108 @@ namespace gazebo
 		math::Pose(this->globalDirection * this->cameraPoseIni.pos,
 			   this->globalDirection);
 	      this->reDirection -= this->cameraT;
+	    }
+
+	  /// handle visibility of models in front of camera
+	  /// calculate current disable-visibility-region boundary lines lineA, lineB
+	  math::Vector3 lineA = this->globalDirection * this->lineAIni.pos;
+	  math::Vector3 lineB = this->globalDirection * this->lineBIni.pos;
+	  /// pointL: the disable boarder point, lineL: the disable boarder horizon
+	  math::Vector3 pointL = this->globalDirection * this->lineLIni.pos;
+	  math::Vector3 lineL = this->globalDirection *
+	    (this->lineLIni.pos + math::Vector3(0, 1, 0)) - pointL;
+	  /// on which side of line the camera exists
+	  double sideCameraIsOnA = this->OnSide(lineA, this->cameraPose.pos);
+	  double sideCameraIsOnB = this->OnSide(lineB, this->cameraPose.pos);
+	  /// on which side of boarder the model exists
+	  double sideActorIsOnL = this->OnSide(lineL, -pointL);
+
+	  /// in case new objects are added
+	  if (this->visualized.size() < this->world->GetModelCount())
+	    this->visualized.resize(this->world->GetModelCount(), true);
+
+	  for (unsigned int i = 0; i < this->world->GetModelCount(); ++i)
+	    {
+	      ModelPtr model = this->world->GetModel(i);
+	      if (model->GetName() == _actor->GetName())
+		continue;
+
+	      math::Box objectBound = model->GetBoundingBox();
+	      double px = objectBound.GetXLength() / 2;
+	      double py = objectBound.GetYLength() / 2;
+	      math::Vector3 centerPos = objectBound.GetCenter() -
+		math::Vector3(this->globalPosition.x, this->globalPosition.y, 0);
+
+	      /// only change visibility of those that are big and "get in the way"
+	      if (objectBound.GetZLength() < this->sizeThreshold)
+		continue;
+
+	      math::Vector3 object2Camera = this->cameraPose.pos - centerPos;
+	      double object2CameraSquared =
+		object2Camera.x * object2Camera.x + object2Camera.y * object2Camera.y;
+	      double object2BoundSquared = px * px + py * py;
+
+	      /// indication of object boundary point (larger than actual boundary)
+	      math::Vector3 boundPos =
+		centerPos + object2BoundSquared * object2Camera;
+	      double sideObjectBoundaryIsOnA = this->OnSide(lineA, boundPos);
+	      double sideObjectBoundaryIsOnB = this->OnSide(lineB, boundPos);
+
+	      /// when object boundary point is in disable-visibility-region
+	      if (sideObjectBoundaryIsOnA * sideCameraIsOnA > 0 &&
+		  sideObjectBoundaryIsOnB * sideCameraIsOnB > 0)
+		{
+		  /// only refresh visibilty when visibility state flips
+		  if (this->visualized[i] == true)
+		    {
+		      double sideCorner1IsOnL =
+			this->OnSide(lineL,
+				     centerPos + math::Vector3(px, py, 0) - pointL);
+		      double sideCorner2IsOnL =
+			this->OnSide(lineL,
+				     centerPos + math::Vector3(-px, py, 0) - pointL);
+		      double sideCorner3IsOnL =
+			this->OnSide(lineL,
+				     centerPos + math::Vector3(-px, -py, 0) - pointL);
+		      double sideCorner4IsOnL =
+			this->OnSide(lineL,
+				     centerPos + math::Vector3(px, -py, 0) - pointL);
+
+		      /// don't disable when at least one of the corners are
+		      /// out of disable boarder, or else long objects will
+		      /// be disabled from the scene
+		      if (sideCorner1IsOnL * sideActorIsOnL > 0 ||
+			  sideCorner2IsOnL * sideActorIsOnL > 0 ||
+			  sideCorner3IsOnL * sideActorIsOnL > 0 ||
+			  sideCorner4IsOnL * sideActorIsOnL > 0)
+			continue;
+
+		      msgs::Visual visualMsg;
+		      visualMsg.set_name(model->GetScopedName());
+		      visualMsg.set_parent_name(model->GetParent()->GetScopedName());
+		      visualMsg.set_visible(false);
+		      this->visPub->Publish(visualMsg);
+		      this->visualized[i] = false;
+		      break; /// only disable one object at a time (crashes)
+		    }
+		  continue;
+		}
+
+	      /// only refresh visibilty when visibility state flips
+	      if (this->visualized[i] == false)
+		{
+		  msgs::Visual visualMsg;
+		  visualMsg.set_name(model->GetScopedName());
+		  visualMsg.set_parent_name(model->GetParent()->GetScopedName());
+		  visualMsg.set_visible(true);
+		  this->visPub->Publish(visualMsg);
+		  this->visualized[i] = true;
+		  /// visualize visualizes COM and collision, so disable them
+		  transport::requestNoReply(this->world->GetName(), "hide_com", "all");
+		  transport::requestNoReply(this->world->GetName(),
+					    "hide_collision", "all");
+		  break; /// only visualize one object at a time (crashes)
+		}
 	    }
 
 	  /// change camera view
@@ -423,5 +587,6 @@ namespace gazebo
     {
       XBvhLimb::FinishLimbX(_actor, _limb);
     }
+
   }
 }
