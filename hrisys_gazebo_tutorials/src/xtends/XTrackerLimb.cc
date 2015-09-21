@@ -37,7 +37,7 @@ namespace gazebo
 
       if (niteRc != nite::STATUS_OK)
         {
-	  std::cerr << "Creating tracker failed." << "\n";
+	  std::cerr << "Creating tracker failed.\n";
           this->doTrack = false;
 	  return;
         }
@@ -159,12 +159,12 @@ namespace gazebo
 	  std::map<std::string, std::string> skelMap = actor->GetSkelMap("mapOpenNI");
           if (skelMap.empty())
             {
-	      std::cerr << actors[i] << " does not have mapOpenNI." << "\n";
+	      std::cerr << actors[i] << " does not have mapOpenNI.\n";
               continue;
             }
           if (skelMap.size() != nodes.size())
             {
-	      std::cerr << "mapOpenNI has illegal number of joints." << "\n";
+	      std::cerr << "mapOpenNI has illegal number of joints.\n";
               continue;
             }
 
@@ -330,7 +330,7 @@ namespace gazebo
 	      common::SkeletonNode* parentJoint = thisJoint->GetParent();
 	      common::SkeletonNode* childJoint = NULL;
 
-	      /// search for nite parent, this will be deprecated
+	      /// search for nite parent
 	      while (parentJoint != NULL)
 		{
 		  if ((iter->second).nameInNite !=
@@ -405,21 +405,21 @@ namespace gazebo
     {
       if (!doTrack)
         {
-	  std::cerr << "XTracker aborted due to initialization failure." << "\n";
+	  std::cerr << "XTracker aborted due to initialization failure.\n";
           return;
         }
 
       std::string actorName = _actor->GetName();
       if (this->skelManager.find(actorName) == this->skelManager.end())
         {
-	  std::cerr << "Unexpected actor for applying XTracker." << "\n";
+	  std::cerr << "Unexpected actor for applying XTracker.\n";
           return;
         }
 
       if (_actor->SetLimbMotion(_limb, [=](XtendedActorPtr _a, std::string _s)
                                 {return this->UpdateLimbX(_a, _s);}) == false)
         {
-      	  std::cerr << "Unexpected limb called in XTrackerLimb" << "\n";
+	  std::cerr << "Unexpected limb called in XTrackerLimb.\n";
           return;
         }
 
@@ -572,6 +572,7 @@ namespace gazebo
 		  filteredJoint[joint.nameInNite] = filteredPos;
 		}
 
+	      std::map<nite::JointType, math::Quaternion> niteFrame;
               for (unsigned int j = 0; j < (it->second).joints.size(); ++j)
                 {
                   XLimbSkeletonJoint joint = (it->second).joints[j];
@@ -613,7 +614,12 @@ namespace gazebo
 		      math::Vector3 targetNitePos = filteredJoint[joint.nameInNite];
 		      math::Vector3 childNitePos = filteredJoint[joint.childInNite];
 
-		      math::Vector3 atT0 = joint.childTranslate;
+		      math::Quaternion parentNiteRot (0, 0, 0);
+		      auto it = niteFrame.find(joint.parentInNite);
+		      if (it != niteFrame.end())
+			parentNiteRot = niteFrame[joint.parentInNite];
+
+		      math::Vector3 atT0 = parentNiteRot * joint.childTranslate;
 		      math::Vector3 atTn = childNitePos - targetNitePos;
 
 		      if (atT0 == math::Vector3(0, 0, 0) ||
@@ -630,6 +636,9 @@ namespace gazebo
 		      nitePose.SetTranslate(joint.translate);
 		      frame[joint.nameInLimb] =
 			joint.priorFixer * nitePose * joint.posteriorFixer;
+
+		      niteFrame[joint.nameInNite] =
+			nitePose.GetRotation() * parentNiteRot;
 		    }
 		} /// for j in joints
 
