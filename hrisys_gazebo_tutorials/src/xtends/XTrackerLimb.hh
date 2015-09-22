@@ -28,7 +28,6 @@ namespace gazebo
 
     public: nite::JointType nameInNite;
 
-      /// will be deprecated
     public: nite::JointType parentInNite;
 
     public: nite::JointType childInNite;
