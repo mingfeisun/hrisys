@@ -15,6 +15,8 @@ namespace gazebo
   {
     enum MapJointType
       {
+	J_ROOT,
+
 	J_STATIC,
 
 	J_TRANSLATE,
@@ -47,6 +49,8 @@ namespace gazebo
 
     public: bool trackJoint;
 
+    public: bool trackOnly;
+
     public: UncertainMemoryFilterPtr<math::Vector3> longFilter;
 
     public: GreedyDecisionFilterPtr<math::Vector3> shortFilter;
@@ -66,9 +70,17 @@ namespace gazebo
 
     public: std::string nextArg;
 
+    public: bool rootInitialized;
+
+    public: math::Vector3 rootOrigin;
+
+    public: float rootScale;
+
     public: bool longFilterOn;
 
     public: bool shortFilterOn;
+
+    public: std::map<std::string, math::Matrix4> trackedFrameData;
     };
 
     class XTrackerLimb : public LimbXtentions
@@ -89,6 +101,9 @@ namespace gazebo
     public: void UpdateLimbX(XtendedActorPtr _actor, std::string _limb);
 
     public: void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
+
+    public: std::map<std::string, math::Matrix4>
+    GetTrackedFrameData(std::string _name) const;
 
     protected: std::map<std::string, XLimbActorSkeletonManager> skelManager;
 

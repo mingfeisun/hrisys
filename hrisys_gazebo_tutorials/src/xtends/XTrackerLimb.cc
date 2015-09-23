@@ -84,7 +84,7 @@ namespace gazebo
       /// NiTE is left-hand coordinate, but we expect it as Y_UP right-hand.
       /// Note that NiTE->actor coordinate conversion is done in update.
       /// Some of the joints will not use NiTE coordinate directely.
-      templateSkelJoints["ROOT"] = {nite::JOINT_TORSO, J_STATIC};
+      templateSkelJoints["ROOT"] = {nite::JOINT_TORSO, J_ROOT};
       nodes[templateSkelJoints["ROOT"].nodeId] =
 	new common::SkeletonNode(NULL, "ROOT", "ROOT",
 				 common::SkeletonNode::JOINT);
@@ -369,6 +369,7 @@ namespace gazebo
               joint.posteriorFixer = rotationAligner[iter->first];
               joint.confidentNTimes = 0;
               joint.trackJoint = false;
+	      joint.trackOnly = false;
 	      /// filters
 	      if (hasLongFilter)
 		{
@@ -391,6 +392,11 @@ namespace gazebo
 	    actorSkelManager.longFilterOn = true;
 	  if (hasShortFilter)
 	    actorSkelManager.shortFilterOn = true;
+
+	  /// for root initialization
+	  actorSkelManager.rootInitialized = false;
+	  actorSkelManager.rootOrigin = math::Vector3(0, 0, 0);
+	  actorSkelManager.rootScale = 0.0;
 
           /// save the fix-matrix
           this->skelManager[actors[i]] = actorSkelManager;
@@ -416,16 +422,28 @@ namespace gazebo
           return;
         }
 
-      if (_actor->SetLimbMotion(_limb, [=](XtendedActorPtr _a, std::string _s)
-                                {return this->UpdateLimbX(_a, _s);}) == false)
+      bool trackOnly = false;
+      if (_limb.find("~~") != std::string::npos) /// track only limb
+	{
+	  _limb.erase(0, 2); /// erase ~~(expected in head) from limb name
+	  if (_actor->GetLimbNodeList(_limb).empty())
+	    {
+	      std::cerr << "Unexpected track-only limb called in XTrackerLimb.\n";
+	      return;
+	    }
+	  trackOnly = true;
+	}
+      else if (_actor->SetLimbMotion(_limb, [=](XtendedActorPtr _a, std::string _s)
+				     {return this->UpdateLimbX(_a, _s);}) == false)
         {
 	  std::cerr << "Unexpected limb called in XTrackerLimb.\n";
           return;
         }
 
       /// the number of actors that register update increases
+      if (!this->skelManager[actorName].registered)
+	this->onRegister++;
       this->skelManager[actorName].registered = true;
-      this->onRegister++;
 
       /// set the headActor if first actor to activate XTracker
       if (this->onRegister == 1)
@@ -440,14 +458,13 @@ namespace gazebo
 
       /// set the joints to track
       for (unsigned int i = 0; i < trackerJoints.size(); ++i)
-        {
-          if (std::find(limbNodeList.begin(), limbNodeList.end(),
-                        trackerJoints[i].nameInLimb) != limbNodeList.end())
+	if (std::find(limbNodeList.begin(), limbNodeList.end(),
+		      trackerJoints[i].nameInLimb) != limbNodeList.end())
+	  {
 	    /// joint is in limbNodeList, so track the joint
-            this->skelManager[actorName].joints[i].trackJoint = true;
-          else
-            this->skelManager[actorName].joints[i].trackJoint = false;
-        }
+	    this->skelManager[actorName].joints[i].trackJoint = true;
+	    this->skelManager[actorName].joints[i].trackOnly = trackOnly;
+	  }
 
       this->skelManager[actorName].next = _actor->xNull;
       this->skelManager[actorName].nextArg = "";
@@ -475,6 +492,16 @@ namespace gazebo
 
       this->skelManager[actorName].next
         ->StartLimbX(_actor, _limb, this->skelManager[actorName].nextArg);
+    }
+
+    //////////////////////////////////////////////////
+    std::map<std::string, math::Matrix4>
+    XTrackerLimb::GetTrackedFrameData(std::string _name) const
+    {
+      auto it = this->skelManager.find(_name);
+      if (it == this->skelManager.end())
+	return std::map<std::string, math::Matrix4>();
+      return (it->second).trackedFrameData;
     }
 
     //////////////////////////////////////////////////
@@ -585,8 +612,13 @@ namespace gazebo
 		    {
 		      math::Matrix4 nitePose(math::Matrix4::IDENTITY);
 		      nitePose.SetTranslate(joint.translate);
-		      frame[joint.nameInLimb] =
-			joint.priorFixer * nitePose * joint.posteriorFixer;
+
+		      math::Matrix4 frameMatrix
+			(joint.priorFixer * nitePose * joint.posteriorFixer);
+		      (it->second).trackedFrameData[joint.nameInLimb] = frameMatrix;
+
+		      if (!joint.trackOnly)
+			frame[joint.nameInLimb] = frameMatrix;
 		      continue;
 		    }
 
@@ -615,8 +647,7 @@ namespace gazebo
 		      math::Vector3 childNitePos = filteredJoint[joint.childInNite];
 
 		      math::Quaternion parentNiteRot (0, 0, 0);
-		      auto it = niteFrame.find(joint.parentInNite);
-		      if (it != niteFrame.end())
+		      if (niteFrame.find(joint.parentInNite) != niteFrame.end())
 			parentNiteRot = niteFrame[joint.parentInNite];
 
 		      math::Vector3 atT0 = parentNiteRot * joint.childTranslate;
@@ -634,11 +665,82 @@ namespace gazebo
 			(math::Quaternion(n.Normalize(), theta).GetAsMatrix4());
 
 		      nitePose.SetTranslate(joint.translate);
-		      frame[joint.nameInLimb] =
-			joint.priorFixer * nitePose * joint.posteriorFixer;
+		      math::Matrix4 frameMatrix
+			(joint.priorFixer * nitePose * joint.posteriorFixer);
+		      (it->second).trackedFrameData[joint.nameInLimb] = frameMatrix;
+
+		      if (!joint.trackOnly)
+			frame[joint.nameInLimb] = frameMatrix;
 
 		      niteFrame[joint.nameInNite] =
 			nitePose.GetRotation() * parentNiteRot;
+		      continue;
+		    }
+
+		  if (joint.type == J_ROOT)
+		    {
+		      nite::SkeletonJoint rootJoint =
+			user.getSkeleton().getJoint(joint.nameInNite);
+
+		      if (rootJoint.getPositionConfidence() < 0.5f)
+			continue;
+
+		      math::Vector3 rootNitePos = filteredJoint[joint.nameInNite];
+
+		      /// root initialization
+		      if ((it->second).rootInitialized == false)
+			{
+			  /// use upper arm to calculate size
+
+			  /// upper arm size of nite
+			  nite::SkeletonJoint elbowJoint =
+			    user.getSkeleton().getJoint(nite::JOINT_LEFT_ELBOW);
+			  nite::SkeletonJoint shoulderJoint =
+			    user.getSkeleton().getJoint(nite::JOINT_LEFT_SHOULDER);
+			  if (elbowJoint.getPositionConfidence() < 0.5f ||
+			      shoulderJoint.getPositionConfidence() < 0.5f)
+			    continue;
+			  float niteSize =
+			    math::Vector3(shoulderJoint.getPosition().x
+					  - elbowJoint.getPosition().x,
+					  shoulderJoint.getPosition().y
+					  - elbowJoint.getPosition().y,
+					  shoulderJoint.getPosition().z
+					  - elbowJoint.getPosition().z).GetLength();
+
+			  /// upper arm size of model
+			  float modelSize = 0.0;
+			  for (unsigned k = 0; k < (it->second).joints.size(); ++k)
+			    if ((it->second).joints[k].nameInNite ==
+				nite::JOINT_LEFT_ELBOW)
+			      {
+				modelSize = fabs((it->second).joints[k].translate.x);
+				break;
+			      }
+			  if (modelSize < 0.0001)
+			    {
+			      std::cout << "Unexpected model size in XTracker!\n";
+			      (it->second).rootInitialized = true;
+			      continue;
+			    }
+
+			  /// initialize root
+			  (it->second).rootOrigin = rootNitePos;
+			  (it->second).rootScale = modelSize / niteSize;
+			  (it->second).rootInitialized = true;
+			}
+
+		      rootNitePos -= (it->second).rootOrigin;
+		      rootNitePos *= (it->second).rootScale;
+
+		      math::Matrix4 nitePose(math::Matrix4::IDENTITY);
+		      nitePose.SetTranslate(rootNitePos);
+		      math::Matrix4 frameMatrix
+			(joint.priorFixer * nitePose * joint.posteriorFixer);
+		      (it->second).trackedFrameData[joint.nameInLimb] = frameMatrix;
+
+		      if (!joint.trackOnly)
+			frame[joint.nameInLimb] = frameMatrix;
 		    }
 		} /// for j in joints
 
