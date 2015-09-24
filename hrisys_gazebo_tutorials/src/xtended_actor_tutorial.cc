@@ -7,6 +7,7 @@
 #include "xtends/XBvhLimb.hh"
 #include "xtends/XTrackerLimb.hh"
 #include "xtends/XWalkerLimb.hh"
+#include "xtends/XLegKinematicsLimb.hh"
 #include "XtendedActor.hh"
 
 namespace gazebo
@@ -26,7 +27,7 @@ namespace gazebo
       sdf::SDFPtr modelSdf(new sdf::SDF);
       if (!sdf::initFile(sdftype, modelSdf))
       	{
-      	  std::cerr << "bad sdf type" << "\n";
+	  std::cerr << "bad sdf type\n";
       	  return;
       	}
 
@@ -34,14 +35,14 @@ namespace gazebo
       TiXmlDocument xmlDoc;
       if (instanceFile.empty())
       	{
-      	  std::cerr << "instance file does not exist" << "\n";
+	  std::cerr << "instance file does not exist\n";
       	  return;
       	}
       xmlDoc.LoadFile(instanceFile);
       TiXmlElement *elemXml = xmlDoc.FirstChildElement(modelSdf->root->GetName());
       if (!sdf::readXml(elemXml, modelSdf->root))
       	{
-      	  std::cerr << "bad instance xml" << "\n";
+	  std::cerr << "bad instance xml\n";
       	  return;
       	}
 
@@ -68,9 +69,39 @@ namespace gazebo
 		  this->xtentions["nite"].reset(new physics::XTrackerLimb(_world));
 		}
 #endif
+	      else if (xtentionType == "legKinematics")
+		{
+		  this->xtentions["legKinematics"]
+		    .reset(new physics::XLegKinematicsLimb(_world));
+#ifdef HRISYS_HAVE_OPENNI
+		  /// set linkage between legKinematics and nite
+		  if (xtendedSdf->HasAttribute("linkage"))
+		    {
+		      auto it = this->xtentions.find("nite");
+		      if (it != this->xtentions.end())
+			boost::static_pointer_cast<physics::XLegKinematicsLimb>
+			  (this->xtentions["legKinematics"])
+			  ->SetFromTracker(boost::static_pointer_cast
+					   <physics::XTrackerLimb>(it->second));
+		      else
+			std::cerr << "Illegal legKinematics declared before nite.\n";
+		    }
+#endif
+		}
 	      else if (xtentionType == "walker")
 		{
 		  this->xtentions["walker"].reset(new physics::XWalkerLimb(_world));
+		  if (xtendedSdf->HasAttribute("linkage"))
+		    {
+		      auto it = this->xtentions.find("legKinematics");
+		      if (it != this->xtentions.end())
+			boost::static_pointer_cast<physics::XWalkerLimb>
+			  (this->xtentions["walker"])
+			  ->SetFromLegKinematics(boost::static_pointer_cast
+						 <physics::XLegKinematicsLimb>(it->second));
+		      else
+			std::cerr << "Illegal walker declared befor legKinematics.\n";
+		    }
 		}
 	      else
 		{

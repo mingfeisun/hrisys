@@ -114,11 +114,11 @@ if (COMPILER_SUPPORTS_CXX11 OR COMPILER_SUPPORTS_CXX0X)
   if (HRISYS_DEVEL)
     add_library(xtended_actor SHARED src/xtended_actor_devel.cc src/bvhactor.cc
       src/xtends/XBvhLimb.cc src/xtends/XTrackerDevel.cc src/xtends/XWalkerLimb.cc
-      src/XtendedActor.cc)
+      src/xtends/XLegKinematicsLimb.cc src/XtendedActor.cc)
   else()
     add_library(xtended_actor SHARED src/xtended_actor_tutorial.cc src/bvhactor.cc
       src/xtends/XBvhLimb.cc src/xtends/XTrackerLimb.cc src/xtends/XWalkerLimb.cc
-      src/XtendedActor.cc)
+      src/xtends/XLegKinematicsLimb.cc src/XtendedActor.cc)
   endif()
   target_link_libraries(xtended_actor ${GAZEBO_LIBRARIES} ${Boost_LIBRARIES})
   if (Nite2_INCLUDEDIR AND Nite2_LIBRARY)

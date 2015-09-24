@@ -65,6 +65,20 @@
     <pair dae="RightHand" bvh="RIGHT_HAND"/>
   </bvh_map>
 
+  <bvh_map name="mapLegs">
+    <pair dae="Hips" bvh="ROOT"/>
+    <pair dae="LHipJoint" bvh="VIRTUAL_LEFT_HIP"/>
+    <pair dae="LeftUpLeg" bvh="LEFT_HIP"/>
+    <pair dae="LeftLeg" bvh="LEFT_KNEE"/>
+    <pair dae="LeftFoot" bvh="LEFT_FOOT"/>
+    <pair dae="LeftToeBase" bvh="LEFT_TOE"/>
+    <pair dae="RHipJoint" bvh="VIRTUAL_RIGHT_HIP"/>
+    <pair dae="RightUpLeg" bvh="RIGHT_HIP"/>
+    <pair dae="RightLeg" bvh="RIGHT_KNEE"/>
+    <pair dae="RightFoot" bvh="RIGHT_FOOT"/>
+    <pair dae="RightToeBase" bvh="RIGHT_TOE"/>
+  </bvh_map>
+
   <animation name="walking">
     <filename>walk.dae</filename>
     <scale>1.0</scale>
