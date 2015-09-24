@@ -256,6 +256,7 @@ namespace gazebo
 	      joint.calculateOnly = false;
 
               legSkelManager.joints[j] = joint;
+	      legSkelManager.rootOffset = math::Vector3(0, 0, 0);
 
 	      if (node->GetName() == "LEFT_TOE")
 		legSkelManager.links[0] = joint.translate.GetLength();
@@ -326,6 +327,29 @@ namespace gazebo
 # endif
 
     //////////////////////////////////////////////////
+    void XLegKinematicsLimb::SetRootOffset(std::string _name, math::Vector3 _reference)
+    {
+      auto it = this->skelManager.find(_name);
+      if (it == this->skelManager.end())
+	{
+	  std::cerr << "Root offset failed, XLegKinematics.\n";
+	  return;
+	}
+      (it->second).rootOffset =
+	_reference - math::Vector3(0, 0, (it->second).links[1] + (it->second).links[2]);
+    }
+
+    //////////////////////////////////////////////////
+    std::map<std::string, math::Matrix4>
+    XLegKinematicsLimb::GetCalculatedFrameData(std::string _name) const
+    {
+      auto it = this->skelManager.find(_name);
+      if (it == this->skelManager.end())
+	return std::map<std::string, math::Matrix4>();
+      return (it->second).legFrame;
+    }
+
+    //////////////////////////////////////////////////
     void XLegKinematicsLimb::UpdateLimbX(XtendedActorPtr _actor, std::string _limb)
     {
       XLimbLegSkeletonManager leg = this->skelManager[_actor->GetName()];
@@ -335,6 +359,8 @@ namespace gazebo
 
       if (this->getFromXTracker)
 	{
+	  /// there should be a manual call to tracker when no limb calls update
+
 	  auto frameFromTracker =
 	    this->fromTracker->GetTrackedFrameData(_actor->GetName());
 	  auto it = frameFromTracker.find(rootJoint.nameInLimb);
@@ -342,13 +368,15 @@ namespace gazebo
 	    return;
 	  rootTransform = (it->second);
 	  rootPosition += rootTransform.GetTranslation();
-	  rootTransform.SetTranslate(math::Vector3(rootPosition.x, 0, rootPosition.z));
+	  rootTransform.SetTranslate(math::Vector3(rootPosition.x + leg.rootOffset.x,
+						   leg.rootOffset.y,
+						   rootPosition.z + leg.rootOffset.z));
 	}
       else
 	{
 	  rootTransform = _actor->GetSkeletonData()->GetRootNode()->GetTransform();
 	  rootPosition += rootTransform.GetTranslation();
-	  rootTransform.SetTranslate(rootPosition);
+	  rootTransform.SetTranslate(rootPosition + leg.rootOffset);
 	}
 
       /// the following calculates a 2D 3-link leg model :
@@ -446,7 +474,7 @@ namespace gazebo
       /// send current frame
 
       /// root joint
-      leg.legFrame[rootJoint.nameInLimb] = rootTransform;
+      this->skelManager[_actor->GetName()].legFrame[rootJoint.nameInLimb] = rootTransform;
       if (!rootJoint.calculateOnly)
 	_actor->SetNodeTransform(rootJoint.nameInLimb, rootTransform);
 
@@ -457,11 +485,11 @@ namespace gazebo
 
 	  math::Matrix4 pose = rotationMatrices[i-1];
 	  pose.SetTranslate(joint.translate);
-	  leg.legFrame[joint.nameInLimb] =
-	    joint.priorFixer * pose * joint.posteriorFixer;
+	  math::Matrix4 frame = joint.priorFixer * pose * joint.posteriorFixer;
+	  this->skelManager[_actor->GetName()].legFrame[joint.nameInLimb] = frame;
 
 	  if (!joint.calculateOnly)
-	    _actor->SetNodeTransform(joint.nameInLimb, leg.legFrame[joint.nameInLimb]);
+	    _actor->SetNodeTransform(joint.nameInLimb, frame);
 	}
     }
   }

@@ -31,6 +31,8 @@ namespace gazebo
 
     public: std::vector<double> links;
 
+    public: math::Vector3 rootOffset;
+
     public: std::map<std::string, math::Matrix4> legFrame;
     };
 
@@ -49,9 +51,14 @@ namespace gazebo
 
     public: void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
 
+    public: void SetRootOffset(std::string _name, math::Vector3 _reference);
+
 # ifdef HRISYS_HAVE_OPENNI
     public: void SetFromTracker(XTrackerLimbPtr _tracker);
 # endif
+
+    public: std::map<std::string, math::Matrix4>
+    GetCalculatedFrameData(std::string _name) const;
 
     protected: std::map<std::string, XLimbLegSkeletonManager> skelManager;
 
@@ -59,6 +66,8 @@ namespace gazebo
 
     protected: bool getFromXTracker;
     };
+
+    typedef boost::shared_ptr<XLegKinematicsLimb> XLegKinematicsLimbPtr;
   }
 }
 
