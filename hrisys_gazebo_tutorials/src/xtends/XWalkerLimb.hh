@@ -7,6 +7,7 @@
 #include "../LimbXtentions.hh"
 #include "ActionTrigger.hh"
 #include "XBvhLimb.hh"
+#include "XLegKinematicsLimb.hh"
 
 # ifdef HRISYS_HAVE_ROS
 #include <ros/ros.h>
@@ -81,6 +82,8 @@ namespace gazebo
     public: void UpdateLimbX(XtendedActorPtr _actor, std::string _limb);
 
     public: void FinishLimbX(XtendedActorPtr _actor, std::string _limb);
+
+    public: void SetFromLegKinematics(XLegKinematicsLimbPtr _legKinematics);
 
       /// \brief Handles value and state by player control.
     protected: ActionTriggerPtr<WalkerTrigger> trigger;
@@ -180,6 +183,10 @@ namespace gazebo
 
       /// \brief Object visibility status. Shown or hidden.
     protected: std::vector<bool> visualized;
+
+    protected: XLegKinematicsLimbPtr fromLegKinematics;
+
+    protected: bool getFromXLegKinematics;
 
       /// \brief Classifies which side of line a point is in.
       /// \param[in] _l Slope of line.

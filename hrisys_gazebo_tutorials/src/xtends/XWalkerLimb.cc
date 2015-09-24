@@ -176,6 +176,7 @@ namespace gazebo
     XWalkerLimb::XWalkerLimb(WorldPtr _world) : XBvhLimb(_world)
     {
       this->cameraEnabled = false;
+      this->getFromXLegKinematics = false;
     }
 
     //////////////////////////////////////////////////
@@ -265,18 +266,29 @@ namespace gazebo
 				 std::string _limb, std::string _arg)
     {
       XBvhLimb::StartLimbX(_actor, _limb, _arg);
+
+      std::string rootName = _actor->GetSkeletonData()->GetRootNode()->GetName();
+      std::map<std::string, math::Matrix4> rootFrame =
+	this->animeManager[_limb].skelAnim->GetPoseAtX(0, rootName);
+
       for (unsigned int i = 0; i < _actor->GetSkeletonData()->GetNumNodes(); ++i)
       	{
       	  common::SkeletonNode* node =
       	    _actor->GetSkeletonData()->GetNodeByHandle(i);
-      	  this->frame0[node->GetName()] = node->GetTransform();
+
+	  if (node->GetName() == rootName) this->frame0[rootName] = rootFrame[rootName];
+	  else this->frame0[node->GetName()] = node->GetTransform();
       	}
+
+      if (this->getFromXLegKinematics)
+	this->fromLegKinematics->SetRootOffset
+	  (_actor->GetName(),
+	   this->frame0[rootName].GetTranslation());
 
       if (this->cameraEnabled)
 	{
 	  math::Pose pose =
-	    _actor->GetChildLink(_actor->GetSkeletonData()->GetRootNode()
-				 ->GetName())->GetWorldCoGPose();
+	    _actor->GetChildLink(rootName)->GetWorldCoGPose();
 	  this->cameraPose += math::Pose(0, 0, pose.pos.z, 0, 0, 0);
 	  this->cameraPoseIni = this->cameraPose;
 	  pose = this->cameraPose + math::Pose(pose.pos.x, 0, 0, 0, 0, 0);
@@ -290,9 +302,34 @@ namespace gazebo
     }
 
     //////////////////////////////////////////////////
+    void XWalkerLimb::SetFromLegKinematics(XLegKinematicsLimbPtr _legKinematics)
+    {
+      std::cout << "XWalker linked with XLegKinematics.\n";
+      this->fromLegKinematics = _legKinematics;
+      this->getFromXLegKinematics = true;
+    }
+
+    //////////////////////////////////////////////////
     void XWalkerLimb::UpdateLimbX(XtendedActorPtr _actor,
 				  std::string _limb)
     {
+      /// get leg pose for no-walking state
+      if (this->getFromXLegKinematics)
+	{
+	  /// assuming none of the limbs calls LegKinematics' Update function
+	  this->fromLegKinematics->UpdateLimbX(_actor, _limb);
+
+	  std::map<std::string, math::Matrix4> frameLeg =
+	    this->fromLegKinematics->GetCalculatedFrameData(_actor->GetName());
+	  for (auto iter = this->frame0.begin(); iter != this->frame0.end(); ++iter)
+	    {
+	      auto it = frameLeg.find(iter->first);
+	      if (it == frameLeg.end())
+		continue;
+	      iter->second = it->second;
+	    }
+	}
+
       this->trigger->TriggerProcess();
 
       if (this->trigger->GetTriggerState() == TriggerState::T_FIRE)
@@ -318,35 +355,17 @@ namespace gazebo
       this->moveDistance += deltaD;
       this->globalPosition += deltaD;
 
-      /// get node posture
-      std::map<std::string, math::Matrix4> frame;
-
       /// get node list
       std::vector<std::string> limbnodelist = _actor->GetLimbNodeList(_limb);
 
       /// the limb should include the root
-      if (find(limbnodelist.begin(), limbnodelist.end(),
-	       _actor->GetSkeletonData()->GetRootNode()->GetName()) ==
-	  limbnodelist.end())
+      std::string rootName = _actor->GetSkeletonData()->GetRootNode()->GetName();
+      if (find(limbnodelist.begin(), limbnodelist.end(), rootName) == limbnodelist.end())
 	{
 	  std::cerr << "Error! XWalker must include root! \n";
 	  this->FinishLimbX(_actor, _limb);
 	  return;
 	}
-
-      XLimbAnimeManager limbAnimeManager = this->animeManager[_limb];
-
-      frame = limbAnimeManager.skelAnim->
-	GetPoseAtX(this->moveDistance.GetLength(),
-		   _actor->GetSkeletonData()->GetRootNode()->GetName());
-      math::Matrix4 rootTrans =
-	frame[_actor->GetSkeletonData()->GetRootNode()->GetName()];
-      math::Vector3 rootPos = rootTrans.GetTranslation();
-      math::Quaternion rootRot = rootTrans.GetRotation();
-      math::Pose modelPose;
-      math::Pose actorPose;
-      actorPose.pos = modelPose.pos + modelPose.rot.RotateVector(rootPos);
-      actorPose.rot = modelPose.rot * rootRot;
 
       /// when model is moving
       if (this->trigger->GetTriggerState() == TriggerState::T_FIRE ||
@@ -373,19 +392,29 @@ namespace gazebo
 	      this->globalDirection * math::Quaternion(math::Vector3(0, 0, 1), theta);
 	}
 
-      actorPose.rot = this->direction * actorPose.rot;
-      math::Matrix4 rootM(actorPose.rot.GetAsMatrix4());
-      rootM.SetTranslate(math::Vector3(this->globalPosition.x,
-				       this->globalPosition.y,
-				       actorPose.pos.z));
-      frame[_actor->GetSkeletonData()->GetRootNode()->GetName()] = rootM;
+      /// get node posture
+      std::map<std::string, math::Matrix4> frame =
+	this->animeManager[_limb].skelAnim->GetPoseAtX(this->moveDistance.GetLength(),
+						       rootName);
+      math::Pose actorPose
+	(math::Pose().pos +
+	   math::Pose().rot.RotateVector(frame[rootName].GetTranslation()),
+	 this->direction * frame[rootName].GetRotation());
 
       /// set node posture
       for (int i = 0; i < limbnodelist.size(); ++i)
 	{
-	  if (limbnodelist[i] == _actor->GetSkeletonData()->GetRootNode()->GetName())
+	  if (limbnodelist[i] == rootName)
 	    {
-	      _actor->SetNodeTransform(limbnodelist[i], frame[limbnodelist[i]]);
+	      math::Matrix4 rootM(actorPose.rot.GetAsMatrix4());
+	      math::Vector3 rootPos =
+		this->direction * frame0[rootName].GetTranslation();
+	      rootM.SetTranslate
+		(math::Vector3(this->globalPosition.x + (1 - this->paramT) * rootPos.x,
+			       this->globalPosition.y + (1 - this->paramT) * rootPos.y,
+			       this->paramT * actorPose.pos.z +
+			         (1 - this->paramT) * rootPos.z));
+	      _actor->SetNodeTransform(limbnodelist[i], rootM);
 	      continue;
 	    }
 
