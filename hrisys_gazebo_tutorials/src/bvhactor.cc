@@ -19,6 +19,8 @@
 
 #include "bvhactor.hh"
 
+#define HRISYS_HAVE_EIGEN
+
 # ifdef HRISYS_HAVE_EIGEN
 #include <Eigen/Core>
 #include <Eigen/SVD>
@@ -129,7 +131,7 @@ namespace gazebo
       /// create the link sdfs for the model
       common::NodeMap nodes = this->skeleton->GetNodes();
 
-# ifdef HRISYS_HAVE_EIGEN
+			# ifdef HRISYS_HAVE_EIGEN
       /// create link vertices map
       std::map<int, std::vector<math::Vector3> > linkVertices;
       std::map<int, math::Vector3> linkCenter;
@@ -143,13 +145,13 @@ namespace gazebo
 			{
 				const common::SubMesh* subMesh = this->mesh->GetSubMesh(i);
 				for (unsigned int j = 0; j < subMesh->GetNodeAssignmentsCount(); ++j)
-					{
-						common::NodeAssignment node = subMesh->GetNodeAssignment(j);
-						linkVertices[node.nodeIndex].push_back(subMesh->GetVertex(node.vertexIndex));
-						linkCenter[node.nodeIndex] += subMesh->GetVertex(node.vertexIndex);
-					}
+				{
+					common::NodeAssignment node = subMesh->GetNodeAssignment(j);
+					linkVertices[node.nodeIndex].push_back(subMesh->GetVertex(node.vertexIndex));
+					linkCenter[node.nodeIndex] += subMesh->GetVertex(node.vertexIndex);
+				}
 			}
-# endif
+			# endif
 
       sdf::ElementPtr linkSdf;
       linkSdf = _sdf->GetElement("link");
@@ -164,8 +166,7 @@ namespace gazebo
       sdf::ElementPtr geomVisSdf = visualSdf->GetElement("geometry");
       sdf::ElementPtr meshSdf = geomVisSdf->GetElement("mesh");
       meshSdf->GetElement("uri")->Set(this->skinFile);
-      meshSdf->GetElement("scale")->Set(math::Vector3(this->skinScale,
-						      this->skinScale, this->skinScale));
+      meshSdf->GetElement("scale")->Set(math::Vector3(this->skinScale, this->skinScale, this->skinScale));
 
       std::string actorLinkName = actorName + "::" + actorName + "_pose";
       this->visualName = actorLinkName + "::" + actorName + "_visual";
@@ -178,10 +179,10 @@ namespace gazebo
 				linkSdf->GetAttribute("name")->Set(bone->GetName());
 				linkSdf->GetElement("gravity")->Set(false);
 				linkPose = linkSdf->GetElement("pose");
-				math::Pose pose(bone->GetModelTransform().GetTranslation(),
-						bone->GetModelTransform().GetRotation());
-				if (bone->IsRootNode())
+				math::Pose pose(bone->GetModelTransform().GetTranslation(), bone->GetModelTransform().GetRotation());
+				if (bone->IsRootNode()){
 					pose = math::Pose();
+				}
 				linkPose->Set(pose);
 
 				# ifdef HRISYS_HAVE_EIGEN
@@ -198,12 +199,12 @@ namespace gazebo
 				/// i.e. Meshes do not depend on the number of child links.
 				Eigen::MatrixXf m(linkVertices[iter->first].size(), 3);
 				for (unsigned int i = 0; i < linkVertices[iter->first].size(); ++i)
-					{
-						math::Vector3 vec = linkVertices[iter->first][i];
-						m(i, 0) = vec.x - linkCenter[iter->first].x;
-						m(i, 1) = vec.y - linkCenter[iter->first].y;
-						m(i, 2) = vec.z - linkCenter[iter->first].z;
-					}
+				{
+					math::Vector3 vec = linkVertices[iter->first][i];
+					m(i, 0) = vec.x - linkCenter[iter->first].x;
+					m(i, 1) = vec.y - linkCenter[iter->first].y;
+					m(i, 2) = vec.z - linkCenter[iter->first].z;
+				}
 				Eigen::JacobiSVD<Eigen::MatrixXf> svd(m.transpose() * m,
 								Eigen::ComputeThinU | Eigen::ComputeThinV);
 				Eigen::ArrayXf axis = svd.matrixU().col(0);
@@ -216,21 +217,21 @@ namespace gazebo
 				double mostPositivePoint = 0.0;
 				double mostNegativePoint = 0.0;
 				for (unsigned int i = 0; i < linkVertices[iter->first].size(); ++i)
-					{
-						math::Vector3 center2Vertex =
-				linkCenter[iter->first] - linkVertices[iter->first][i];
-						double distance =
-				axisV3.Cross(center2Vertex).GetLength();
-						if (distance > maxDistance)
-				maxDistance = distance;
-						averageDistance += distance;
-						double point =
-				center2Vertex.Dot(axisV3);
-						if (point > mostPositivePoint)
-				mostPositivePoint = point;
-						else if (point < mostNegativePoint)
-				mostNegativePoint = point;
+				{
+					math::Vector3 center2Vertex = linkCenter[iter->first] - linkVertices[iter->first][i];
+					double distance = axisV3.Cross(center2Vertex).GetLength();
+					if (distance > maxDistance){
+						maxDistance = distance;
 					}
+					averageDistance += distance;
+					double point = center2Vertex.Dot(axisV3);
+					if (point > mostPositivePoint){
+						mostPositivePoint = point;
+					}
+					else if (point < mostNegativePoint){
+						mostNegativePoint = point;
+					}
+				}
 
 				averageDistance *= this->skinScale / linkVertices[iter->first].size();
 				maxDistance *= this->skinScale;
@@ -261,8 +262,7 @@ namespace gazebo
 				/// add cylinder collision
 				sdf::ElementPtr collisionSdf1 = linkSdf->AddElement("collision");
 				collisionSdf1->GetAttribute("name")->Set(bone->GetName() + "_collision");
-				collisionSdf1->GetElement("pose")
-					->Set(math::Pose(cylinderCenterInLink, cylinderPoseInLink));
+				collisionSdf1->GetElement("pose")->Set(math::Pose(cylinderCenterInLink, cylinderPoseInLink));
 				sdf::ElementPtr geomColSdf1 = collisionSdf1->GetElement("geometry");
 				sdf::ElementPtr cylColSdf = geomColSdf1->GetElement("cylinder");
 				cylColSdf->GetElement("radius")->Set(maxDistance);
